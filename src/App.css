@@ -1,0 +1,403 @@
+/* src/App.css */
+html,
+body,
+#root,
+.App {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f4f7f6;
+  color: #333;
+}
+
+.App {
+  display: flex;
+  height: 100%;
+}
+
+.graph-norm-creator-container {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  width: 100vw;
+}
+
+.sidebar {
+  width: 350px;
+  /* Increased width for more space */
+  min-width: 320px;
+  /* Minimum width */
+  padding: 20px;
+  border-right: 1px solid #d1d5db;
+  background-color: #f9fafb;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
+}
+
+.sidebar h2,
+.sidebar h3 {
+  margin-top: 0;
+  color: #1f2937;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 8px;
+  margin-bottom: 15px;
+  font-weight: 600;
+}
+
+.sidebar label {
+  display: block;
+  margin-top: 12px;
+  margin-bottom: 5px;
+  font-size: 0.9em;
+  font-weight: 500;
+  color: #4b5563;
+}
+
+.sidebar input[type="text"],
+.sidebar input[type="number"],
+.sidebar select {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-sizing: border-box;
+  font-size: 0.95em;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.sidebar input[type="text"]:focus,
+.sidebar input[type="number"]:focus,
+.sidebar select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+  outline: none;
+}
+
+/* Palette node is removed, so these styles are no longer needed or can be repurposed */
+/*
+.palette-node { ... }
+.palette-node:hover { ... }
+.palette-node .node-icon { ... }
+*/
+
+.canvas-container {
+  flex-grow: 1;
+  /* Explicit width can be set, but flex-grow is better for responsiveness */
+  /* For a fixed width, uncomment below and adjust .sidebar width accordingly */
+  /* width: calc(100vw - 350px - 380px); */
+  /* Example: Total width - sidebar - output panel */
+  min-width: 400px;
+  /* Ensure canvas has a minimum decent width */
+  background-color: #e0e7ff;
+  /* Lighter, pleasant canvas background */
+  position: relative;
+  height: 100%;
+  border-left: 1px solid #d1d5db;
+  border-right: 1px solid #d1d5db;
+}
+
+.react-flow-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.output-panel {
+  width: 380px;
+  min-width: 350px;
+  padding: 20px;
+  /* border-left: 1px solid #d1d5db; */
+  /* Removed as canvas-container now has right border */
+  background-color: #f9fafb;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.05);
+}
+
+.output-panel h2 {
+  margin-top: 0;
+  color: #1f2937;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 8px;
+  margin-bottom: 15px;
+  font-weight: 600;
+}
+
+.output-panel ul {
+  list-style-type: none;
+  padding-left: 0;
+  max-height: 250px;
+  overflow-y: auto;
+  margin-bottom: 20px;
+}
+
+.output-panel li {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.output-panel li strong {
+  color: #1e40af;
+}
+
+.output-panel textarea {
+  flex-grow: 1;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 0.85em;
+  background-color: #fdfdff;
+  color: #374151;
+}
+
+
+.action-button {
+  background-color: #10b981;
+  color: white;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1em;
+  font-weight: 500;
+  margin-top: 20px;
+  transition: background-color 0.2s ease;
+  width: 100%;
+}
+
+.action-button:hover {
+  background-color: #059669;
+}
+
+/* Enhanced Custom Node Styles */
+.custom-node {
+  background-color: #ffffff;
+  border: 2px solid #9ca3af;
+  /* Made border more prominent */
+  border-radius: 10px;
+  /* Slightly more rounded */
+  padding: 0;
+  width: 200px;
+  /* Increased width for better text fit */
+  text-align: left;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.custom-node.selected {
+  border-color: #2563eb;
+  /* Stronger blue for selected */
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.4), 0 5px 10px rgba(0, 0, 0, 0.15);
+}
+
+.custom-node-header {
+  padding: 10px 15px;
+  /* Increased padding */
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 0.85em;
+  /* Slightly larger */
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-top-left-radius: 8px;
+  /* Match parent rounding */
+  border-top-right-radius: 8px;
+}
+
+.custom-node .node-icon {
+  margin-right: 10px;
+  /* Increased spacing */
+  font-size: 1.3em;
+  /* Larger icon */
+}
+
+.custom-node .node-type-label {
+  color: #374151;
+  /* Darker for better contrast */
+}
+
+.custom-node-body {
+  padding: 15px;
+  /* Increased padding */
+}
+
+.custom-node .node-name {
+  font-size: 1.05em;
+  /* Slightly larger name */
+  font-weight: 500;
+  color: #111827;
+  /* Darkest text for name */
+  margin: 0;
+  word-wrap: break-word;
+  line-height: 1.3;
+}
+
+/* Specific styles for Activity nodes */
+.custom-node.activity-node {
+  border-color: #d97706;
+  /* Darker amber for border */
+}
+
+.custom-node.activity-node .custom-node-header {
+  background-color: #fef3c7;
+  /* Lighter amber */
+  color: #92400e;
+  /* Dark amber text */
+}
+
+/* Specific styles for Entity nodes */
+.custom-node.entity-node {
+  border-color: #2563eb;
+  /* Stronger blue for border */
+}
+
+.custom-node.entity-node .custom-node-header {
+  background-color: #dbeafe;
+  /* Lighter blue */
+  color: #1e40af;
+  /* Dark blue text */
+}
+
+.custom-handle {
+  width: 10px !important;
+  height: 10px !important;
+  background: #cbd5e1 !important;
+  /* Lighter handle */
+  border: 2px solid #fff !important;
+  /* White border for pop */
+  border-radius: 50%;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Handles are not connectable by user, so connecting style might not be needed */
+/*
+.custom-handle.connecting {
+    background: #3b82f6 !important;
+}
+*/
+
+
+.properties-panel {
+  margin-top: 10px;
+  padding: 15px;
+  /* Increased padding */
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  /* More rounding */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.properties-panel p {
+  margin: 8px 0;
+  /* Increased spacing */
+  font-size: 0.9em;
+}
+
+.properties-panel-placeholder {
+  font-style: italic;
+  color: #6b7280;
+  font-size: 0.9em;
+  padding: 10px 0;
+}
+
+/* React Flow attribution and controls styling (optional) */
+.react-flow__controls {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+}
+
+.react-flow__controls button {
+  background-color: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.react-flow__controls button:hover {
+  background-color: #f9fafb;
+}
+
+.react-flow__minimap {
+  border-radius: 6px;
+  /* More rounding */
+  background-color: rgba(243, 244, 246, 0.95);
+  /* Slightly different bg */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+}
+
+.react-flow__background {
+  background-color: #f0f2f5;
+  /* Slightly different background for the pattern */
+}
+
+
+/* Autocomplete Styles */
+.autocomplete-container {
+  position: relative;
+  width: 100%;
+}
+
+.autocomplete-container input[type="text"] {
+  /* Inherits from .sidebar input[type="text"] */
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.suggestions-list {
+  position: absolute;
+  top: calc(100% + 2px);
+  /* Position below the input field with a small gap */
+  left: 0;
+  right: 0;
+  border: 1px solid #d1d5db;
+  /* border-top: none; */
+  /* Keep top border for visual separation if input has rounded bottom */
+  background-color: white;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  /* Increased max height */
+  overflow-y: auto;
+  z-index: 1000;
+  border-radius: 6px;
+  /* Rounded corners for the whole dropdown */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.suggestions-list li {
+  padding: 10px 12px;
+  /* Adjusted padding */
+  cursor: pointer;
+  font-size: 0.9em;
+  border-bottom: 1px solid #f3f4f6;
+  /* Separator line */
+}
+
+.suggestions-list li:last-child {
+  border-bottom: none;
+}
+
+.suggestions-list li:hover {
+  background-color: #eff6ff;
+  /* Lighter blue hover */
+  color: #1d4ed8;
+}
+
+.suggestions-list li.suggestion-active {
+  background-color: #dbeafe;
+  color: #1e3a8a;
+  font-weight: 500;
+}
