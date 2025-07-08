@@ -11,13 +11,13 @@ export interface GlobalProcessConfig {
     corrRelName: string;
     dfEntityRelName: string;
 
-    // Attribute aggregation method
-    aggregateByAttributeNodes: 'property' | 'node';
-    // Only if aggregateByAttributeNodes === 'node'
-    attributeRelLabel?: string;
+    // Attribute Storage
+    attributeStorage: 'property' | 'node';
+    // Only if attributeStorage === 'node'
+    attributeRelName?: string;
     attributeNodeLabel?: string;
-    attributeValueProperty?: string;
     attributeNameProperty?: string;
+    attributeValueProperty?: string;
 
     // How is the DF type distinguished?
     dfTypeDistinction: 'label' | 'property';
@@ -35,11 +35,11 @@ export const initialGlobalProcessConfig: GlobalProcessConfig = {
     dfBaseRelName: 'DF',
     corrRelName: 'CORR',
     dfEntityRelName: 'DF_ENTITY',
-    aggregateByAttributeNodes: 'property',
-    attributeRelLabel: undefined,
-    attributeNodeLabel: undefined,
-    attributeValueProperty: undefined,
-    attributeNameProperty: undefined,
+    attributeStorage: 'property',
+    attributeRelName: 'HAS_ATTRIBUTE',
+    attributeNodeLabel: 'Attribute',
+    attributeNameProperty: 'name',
+    attributeValueProperty: 'value',
     dfTypeDistinction: 'label',
     dfTypePropertyName: undefined,
 };

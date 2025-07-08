@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { GlobalProcessConfig } from './GlobalConfig';
-// Removed import for GlobalProcessConfig as it's defined above in the same "file"
 
 // Helper components (mimicking shadcn/ui with Tailwind)
 
@@ -46,13 +45,13 @@ const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant
     let variantStyle = "";
     switch (variant) {
         case 'outline':
-            variantStyle = "bg-black-200 border border-input text-white hover:bg-accent hover:text-accent-foreground";
+            variantStyle = "bg-transparent border border-input text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700";
             break;
         case 'secondary':
-            variantStyle = "bg-black-200 dark:bg-black-700 text-white dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600";
+            variantStyle = "bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600";
             break;
         default: // default
-            variantStyle = "bg-black-600 text-white hover:bg-black-700";
+            variantStyle = "bg-indigo-600 text-white hover:bg-indigo-700";
     }
     return (
         <button className={`${baseStyle} ${variantStyle} px-4 py-2 ${className}`} {...props}>
@@ -132,7 +131,7 @@ const steps: ConfigStep[] = [
         id: 4,
         title: 'Attribute Storage',
         description: 'Specify if attributes are stored as properties on the node or as separate nodes connected by a relationship.',
-        fields: ['aggregateByAttributeNodes', 'attributeRelLabel', 'attributeNodeLabel', 'attributeNameProperty', 'attributeValueProperty'],
+        fields: ['attributeStorage', 'attributeRelName', 'attributeNodeLabel', 'attributeNameProperty', 'attributeValueProperty'],
     },
     {
         id: 5,
@@ -150,21 +149,21 @@ const fieldDetails: Record<keyof GlobalProcessConfig, { label: string; placehold
     timestampProperty: { label: 'Timestamp Property Name (on Events)', placeholder: 'e.g., timestamp, time:timestamp, endTime', tooltip: 'The property key on Event nodes that stores the occurrence time of the event.' },
     corrRelName: { label: 'Event-Entity Correlation Name', placeholder: 'e.g., CORR, OBSERVED_IN, BELONGS_TO', tooltip: 'The relationship type linking an event to an entity it involves or affects.' },
     dfEntityRelName: { label: 'Entity-Entity DF Relation Name', placeholder: 'e.g., DF_ENTITY, FOLLOWS_BY', tooltip: 'The relationship type indicating one entity directly follows another in the process flow (often derived).' },
-    aggregateByAttributeNodes: { label: 'Attribute Storage', placeholder: '', tooltip: 'Are event/entity attributes stored as properties on the node, or as separate nodes connected by a relationship?' },
-    attributeRelLabel: { label: 'Attribute Relationship Label', placeholder: 'e.g., HAS_ATTRIBUTE', tooltip: 'The relationship label connecting the main node to the attribute node.' },
+    attributeStorage: { label: 'Attribute Storage', placeholder: '', tooltip: 'Are event/entity attributes stored as properties on the node, or as separate nodes connected by a relationship?' },
+    attributeRelName: { label: 'Attribute Relationship Label', placeholder: 'e.g., HAS_ATTRIBUTE', tooltip: 'The relationship label connecting the main node to the attribute node.' },
     attributeNodeLabel: { label: 'Attribute Node Label', placeholder: 'e.g., EntityAttribute', tooltip: 'The label of the node that contains the attribute.' },
     attributeNameProperty: { label: 'Attribute Name Property', placeholder: 'e.g., name, attr_name', tooltip: 'The property on the attribute node that contains the attribute\'s name (e.g., "amount", "status").' },
     attributeValueProperty: { label: 'Attribute Value Property', placeholder: 'e.g., value', tooltip: 'The property on the attribute node that contains the value.' },
     dfTypeDistinction: { label: 'DF Type Distinction', placeholder: '', tooltip: 'Choose how the type of DF relationship is distinguished: by edge label (e.g., DF_Order) or by a property on the edge.' },
     dfTypePropertyName: { label: 'DF Relationship Type Property Name', placeholder: 'e.g., EntityType, df_type, type', tooltip: 'If you use a property on the DF relationship to indicate its type (e.g., "OrderToShipment"), specify its property name here.' },
-    dfBaseRelName: { label: 'Event-Event DF Relation Name', placeholder: 'e.g., DF, DIRECTLY_FOLLOWS', tooltip: 'The relationship type connecting an event to the next event in the same case/trace.' },
+    dfBaseRelName: { label: 'Event-Event DF Relation Name', placeholder: 'e.g., DF, DIRECTLY_FOLLOWS', tooltip: 'The relationship type connecting an event to the next event in the same case/trace.' }
 };
 
 
 interface TechnicalConfiguratorProps {
     currentConfig: GlobalProcessConfig;
     onConfigSave: (newConfig: GlobalProcessConfig) => void;
-    onCancel?: () => void; // Optional: if this can be part of a larger flow
+    onCancel?: () => void;
 }
 
 const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentConfig, onConfigSave, onCancel }) => {
@@ -176,15 +175,15 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
     }, [currentConfig]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setConfig(prev => ({ ...prev, [name]: value as string }));
+        const { name, value, type } = e.target;
+        const targetValue = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+        setConfig(prev => ({ ...prev, [name]: targetValue }));
     };
 
     const handleNext = () => {
         if (currentStep < steps.length) {
             setCurrentStep(currentStep + 1);
         } else {
-            // This is the "Save" action on the last step
             onConfigSave(config);
         }
     };
@@ -193,13 +192,15 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
         if (currentStep > 1) {
             setCurrentStep(currentStep - 1);
         } else if (onCancel) {
-            onCancel(); // If on first step and back is clicked, call onCancel
+            onCancel();
         }
     };
 
     const activeStep = steps.find(s => s.id === currentStep);
 
     if (!activeStep) return <div>Error: Configuration step not found.</div>;
+
+    const isLastStep = currentStep === steps.length;
 
     return (
         <div className="min-h-screen bg-gray-100 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8 flex flex-col items-center">
@@ -218,21 +219,18 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
                     <form onSubmit={(e) => { e.preventDefault(); handleNext(); }}>
                         <div className="space-y-6">
                             {activeStep.fields.map(fieldName => {
-                                // AGGREGATE BY ATTRIBUTE NODES LOGIC
-                                if (fieldName === 'aggregateByAttributeNodes') {
-                                    const details = fieldDetails[fieldName];
+                                const details = fieldDetails[fieldName];
+
+                                if (fieldName === 'attributeStorage') {
                                     return (
                                         <div key={fieldName}>
                                             <Label htmlFor={fieldName} className="flex items-center">
                                                 {details.label}
-                                                <Tooltip content={details.tooltip}>
-                                                    <InfoIcon className="cursor-help" />
-                                                </Tooltip>
+                                                <Tooltip content={details.tooltip}><InfoIcon className="cursor-help" /></Tooltip>
                                             </Label>
                                             <select
-                                                id={fieldName}
-                                                name={fieldName}
-                                                value={config.aggregateByAttributeNodes}
+                                                id={fieldName} name={fieldName}
+                                                value={config.attributeStorage}
                                                 onChange={handleChange}
                                                 className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                             >
@@ -242,32 +240,24 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
                                         </div>
                                     );
                                 }
-                                // Only show the 3 extra fields if 'node' is selected
+
                                 if (
-                                    (fieldName === 'attributeRelLabel' ||
-                                        fieldName === 'attributeNodeLabel' ||
-                                        fieldName === 'attributeNameProperty' ||
-                                        fieldName === 'attributeValueProperty') &&
-                                    config.aggregateByAttributeNodes !== 'node'
+                                    (fieldName === 'attributeRelName' || fieldName === 'attributeNodeLabel' ||
+                                        fieldName === 'attributeNameProperty' || fieldName === 'attributeValueProperty') &&
+                                    config.attributeStorage !== 'node'
                                 ) {
                                     return null;
                                 }
-                                // DF TYPE DISTINCTION LOGIC
+
                                 if (fieldName === 'dfTypeDistinction') {
-                                    const details = fieldDetails[fieldName];
                                     return (
                                         <div key={fieldName}>
                                             <Label htmlFor={fieldName} className="flex items-center">
                                                 {details.label}
-                                                <Tooltip content={details.tooltip}>
-                                                    <InfoIcon className="cursor-help" />
-                                                </Tooltip>
+                                                <Tooltip content={details.tooltip}><InfoIcon className="cursor-help" /></Tooltip>
                                             </Label>
                                             <select
-                                                id={fieldName}
-                                                name={fieldName}
-                                                value={config.dfTypeDistinction}
-                                                onChange={handleChange}
+                                                id={fieldName} name={fieldName} value={config.dfTypeDistinction} onChange={handleChange}
                                                 className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                             >
                                                 <option value="label">DF edge label includes entity type (e.g., DF_Order)</option>
@@ -276,44 +266,38 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
                                         </div>
                                     );
                                 }
-                                if (fieldName === 'dfTypePropertyName' && config.dfTypeDistinction !== 'property') {
-                                    return null; // Only show if 'property' is selected
-                                }
+                                if (fieldName === 'dfTypePropertyName' && config.dfTypeDistinction !== 'property') return null;
 
-                                // Default input
-                                const details = fieldDetails[fieldName];
                                 return (
                                     <div key={fieldName}>
                                         <Label htmlFor={fieldName} className="flex items-center">
-                                            {fieldName === 'dfBaseRelName' && config.dfTypeDistinction !== 'property' ? 'Prefix for ' + details.label : details.label}
-                                            <Tooltip content={details.tooltip}>
-                                                <InfoIcon className="cursor-help" />
-                                            </Tooltip>
+                                            {details.label}
+                                            <Tooltip content={details.tooltip}><InfoIcon className="cursor-help" /></Tooltip>
                                         </Label>
                                         <Input
-                                            type="text"
-                                            id={fieldName}
-                                            name={fieldName}
-                                            value={config[fieldName] || ''}
-                                            onChange={handleChange}
-                                            placeholder={details.placeholder}
-                                            required={fieldName !== 'dfTypePropertyName'}
+                                            type="text" id={fieldName} name={fieldName}
+                                            value={config[fieldName]?.toString() || ''} onChange={handleChange}
+                                            placeholder={details.placeholder} required
                                         />
                                     </div>
                                 );
                             })}
                         </div>
 
-                        {currentStep === steps.length && (
-                            <div className="mt-8 p-4 border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-850">
+                        {isLastStep && (
+                            <div className="mt-8 p-4 border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-800/50">
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">Review Configuration</h3>
                                 <ul className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
                                     {Object.entries(config).map(([key, value]) => {
-                                        const detail = fieldDetails[key as keyof GlobalProcessConfig];
+                                        const fieldConf = fieldDetails[key as keyof GlobalProcessConfig];
+                                        if (!fieldConf) return null; // Skip fields not in details
+                                        // Conditional rendering logic based on dependencies
                                         if (key === 'dfTypePropertyName' && config.dfTypeDistinction !== 'property') return null;
+                                        if (['attributeRelName', 'attributeNodeLabel', 'attributeNameProperty', 'attributeValueProperty'].includes(key) && config.attributeStorage !== 'node') return null;
                                         return (
-                                            <li key={key}>
-                                                <span className="font-semibold">{detail?.label || key}:</span> {value}
+                                            <li key={key} className="flex justify-between">
+                                                <span className="font-semibold">{fieldConf.label}:</span>
+                                                <span className="text-right font-mono text-indigo-600 dark:text-indigo-400">{value.toString()}</span>
                                             </li>
                                         );
                                     })}
@@ -323,15 +307,13 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
 
                         <div className="mt-8 flex justify-between items-center">
                             <Button
-                                type="button"
-                                variant="outline"
-                                onClick={handleBack}
+                                type="button" variant="outline" onClick={handleBack}
                                 disabled={currentStep === 1 && !onCancel}
                             >
-                                {currentStep === 1 && !onCancel ? 'Start' : 'Back'}
+                                {currentStep === 1 ? (onCancel ? 'Cancel' : 'Start') : 'Back'}
                             </Button>
                             <Button type="submit">
-                                {currentStep === steps.length ? 'Save Configuration' : 'Next'}
+                                {isLastStep ? 'Save & Continue' : 'Next'}
                             </Button>
                         </div>
                     </form>
@@ -341,5 +323,5 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
     );
 };
 
-export default TechnicalConfigurator; // This line is removed as TechnicalConfigurator is used in App.tsx in the same "file"
-export { Label, Input, Button, Progress, Tooltip, InfoIcon }; // Exporting the helper components for potential reuse
+export default TechnicalConfigurator;
+export { Label, Input, Button, Progress, Tooltip, InfoIcon };
