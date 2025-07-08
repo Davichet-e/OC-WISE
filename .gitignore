@@ -26,4 +26,3 @@ dist-ssr
 
 .env
 backend-old.py
-package-lock.json
