@@ -20,7 +20,7 @@ import './App.css';
 import AutocompleteInput from './AutocompleteInput';
 import TechnicalConfigurator, { Button, Input, Label, Tooltip, InfoIcon } from './TechnicalConfiguration';
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GlobalProcessConfig, initialGlobalProcessConfig } from './GlobalConfig';
+import { GlobalProcessConfig, initialGlobalProcessConfig, useGlobalConfig } from './GlobalConfig';
 import NormsTable from "./NormsTable";
 
 // --- Constants and Type Definitions ---
@@ -70,9 +70,6 @@ const initialGlobalNormDetails: GlobalNormDetails = {
   e2o_operator: '>=', e2o_count: '1', forbidden: false,
   property_name: '', property_data_type: 'string', property_operator: 'in', property_value: '',
 };
-
-const activityNames: string[] = ["Create PO", "Approve PO", "Receive Goods", "Create Invoice", "Approve Invoice", "Pay Invoice"];
-const entityNames: string[] = ["Purchase Order", "Invoice", "Supplier", "Goods Receipt"];
 
 const SINGLE_NODE_ID = 'single-node';
 const SOURCE_NODE_ID = 'source-node';
@@ -228,6 +225,7 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
   const [thresholdCondition, setThresholdCondition] = useState<'less than' | 'greater than'>('less than');
   const [analysisResults, setAnalysisResults] = useState<string>('');
   const [isAnalysisRunning, setIsAnalysisRunning] = useState<boolean>(false);
+  const { autocompleteData } = useGlobalConfig();
 
   const [outputPanelWidth, setOutputPanelWidth] = useState(420);
   const resizing = useRef(false);
@@ -661,7 +659,7 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
               inputId={`nodeNameInput-${selectedElement.id}`}
               value={selectedElement.data.name || ''}
               onChange={(newValue) => handleNodeDataChange(selectedElement.id, 'name', newValue)}
-              suggestions={selectedElement.data.type === (globalProcessConfig.eventNodeLabel || 'Activity') ? activityNames : entityNames}
+              suggestions={selectedElement.data.type === (globalProcessConfig.eventNodeLabel || 'Activity') ? autocompleteData.activityTypes : autocompleteData.entityTypes}
               placeholder={`Enter Name for this ${selectedElement.data.type}`}
             />
           </div>
@@ -724,59 +722,28 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
 };
 
 const App: React.FC = () => {
-  const [globalProcessConfig, setGlobalProcessConfig] = useState<GlobalProcessConfig>(initialGlobalProcessConfig);
-  const [isTechConfigMode, setIsTechConfigMode] = useState(true);
-
-  useEffect(() => {
-    const savedConfig = localStorage.getItem('globalProcessConfig');
-    if (savedConfig) {
-      try {
-        const parsedConfig = JSON.parse(savedConfig);
-        // Basic validation to ensure it's not an empty object
-        if (Object.keys(parsedConfig).length > 0) {
-          setGlobalProcessConfig(parsedConfig);
-          setIsTechConfigMode(false);
-        } else {
-          localStorage.removeItem('globalProcessConfig');
-        }
-      } catch (error) {
-        console.error("Failed to parse saved config:", error);
-        localStorage.removeItem('globalProcessConfig');
-      }
-    }
-  }, []);
+  const { config, setConfig, isConfigSet, setIsConfigSet } = useGlobalConfig();
 
   const handleConfigSave = (newConfig: GlobalProcessConfig) => {
-    setGlobalProcessConfig(newConfig);
-    localStorage.setItem('globalProcessConfig', JSON.stringify(newConfig));
-    setIsTechConfigMode(false);
+    setConfig(newConfig);
+    setIsConfigSet(true);
   };
 
   const handleBackToTechConfig = () => {
-    setIsTechConfigMode(true);
+    setIsConfigSet(false);
   };
 
-  const hasSavedConfig = useMemo(() => {
-    try {
-      const saved = localStorage.getItem('globalProcessConfig');
-      return saved && Object.keys(JSON.parse(saved)).length > 0;
-    } catch {
-      return false;
-    }
-  }, [globalProcessConfig]);
-
-
-  if (isTechConfigMode) {
+  if (!isConfigSet) {
     return <TechnicalConfigurator
-      currentConfig={globalProcessConfig}
+      currentConfig={config}
       onConfigSave={handleConfigSave}
-      onCancel={hasSavedConfig ? () => setIsTechConfigMode(false) : undefined}
+      onCancel={isConfigSet ? () => setIsConfigSet(true) : undefined}
     />;
   }
 
   return (
     <ReactFlowProvider>
-      <GraphNormCreatorInternal globalProcessConfig={globalProcessConfig} onBackToTechConfig={handleBackToTechConfig} />
+      <GraphNormCreatorInternal globalProcessConfig={config} onBackToTechConfig={handleBackToTechConfig} />
     </ReactFlowProvider>
   );
 };

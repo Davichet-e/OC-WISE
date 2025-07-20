@@ -1,13 +1,12 @@
 import datetime
 import io
-import json
 import os
 import sys
 import pandas as pd
 from typing import List, Dict, Any, Optional, Tuple
 from abc import ABC, abstractmethod
 from neo4j import GraphDatabase, Driver
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -87,7 +86,6 @@ def execute_query(driver: Optional[Driver], query: str, parameters: Optional[Dic
     results_list = []
     try:
         with driver.session(database="neo4j") as session:
-            print(query)
             result = session.run(query, parameters if parameters else {})
             for record in result:
                 results_list.append(record.data())
@@ -538,7 +536,7 @@ def run_analysis_from_request(request_data: NormRequest) -> str:
     try:
         base_config = CONFIG.copy()
         # This function now returns a list of report strings
-        reports = parse_and_run_norms(driver, base_config, request_data.dict())
+        reports = parse_and_run_norms(driver, base_config, request_data.model_dump())
     except Exception as e:
         print(f"\n--- UNEXPECTED ERROR ---")
         print(f"An error occurred during analysis: {e}")
@@ -565,6 +563,46 @@ async def api_run_analysis(request: NormRequest):
         return {"results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class ConfigForTypes(BaseModel):
+    config: Dict[str, Any]
+
+@app.post("/api/entity-types")
+async def get_entity_types(request: ConfigForTypes):
+    driver = get_neo4j_driver()
+    if not driver:
+        raise HTTPException(status_code=500, detail="Could not connect to Neo4j database.")
+    
+    config = request.config
+    query = f"""
+    MATCH (n:{config['entityNodeLabel']})
+    WHERE n.{config['entityFilterProperty']} IS NOT NULL
+    RETURN DISTINCT n.{config['entityFilterProperty']} AS type
+    """
+    results = execute_query(driver, query)
+    driver.close()
+    if results is None:
+        return {"types": []}
+    return {"types": [r['type'] for r in results]}
+
+@app.post("/api/activity-types")
+async def get_activity_types(request: ConfigForTypes):
+    driver = get_neo4j_driver()
+    if not driver:
+        raise HTTPException(status_code=500, detail="Could not connect to Neo4j database.")
+    
+    config = request.config
+    query = f"""
+    MATCH (n:{config['eventNodeLabel']})
+    WHERE n.{config['activityProperty']} IS NOT NULL
+    RETURN DISTINCT n.{config['activityProperty']} AS type
+    """
+    results = execute_query(driver, query)
+    driver.close()
+    if results is None:
+        return {"types": []}
+    return {"types": [r['type'] for r in results]}
 
 
 if __name__ == "__main__":

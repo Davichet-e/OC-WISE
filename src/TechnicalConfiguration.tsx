@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GlobalProcessConfig } from './GlobalConfig';
+import { GlobalProcessConfig, useGlobalConfig } from './GlobalConfig';
 
 // Helper components (mimicking shadcn/ui with Tailwind)
 
@@ -169,6 +169,8 @@ interface TechnicalConfiguratorProps {
 const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentConfig, onConfigSave, onCancel }) => {
     const [config, setConfig] = useState<GlobalProcessConfig>(currentConfig);
     const [currentStep, setCurrentStep] = useState(1);
+    const { setAutocompleteData } = useGlobalConfig();
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         setConfig(currentConfig);
@@ -180,11 +182,49 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
         setConfig(prev => ({ ...prev, [name]: targetValue }));
     };
 
-    const handleNext = () => {
+    const handleNext = async () => {
+        setError(null);
         if (currentStep < steps.length) {
             setCurrentStep(currentStep + 1);
         } else {
-            onConfigSave(config);
+            try {
+                const [entityTypesRes, activityTypesRes] = await Promise.all([
+                    fetch('http://localhost:8000/api/entity-types', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ config }),
+                    }),
+                    fetch('http://localhost:8000/api/activity-types', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ config }),
+                    }),
+                ]);
+
+                if (!entityTypesRes.ok || !activityTypesRes.ok) {
+                    let errorMsg = "An error occurred fetching data.";
+                    if (!entityTypesRes.ok) {
+                        const entityError = await entityTypesRes.json();
+                        errorMsg += ` Entity types error: ${entityError.detail}.`;
+                    }
+                    if (!activityTypesRes.ok) {
+                        const activityError = await activityTypesRes.json();
+                        errorMsg += ` Activity types error: ${activityError.detail}.`;
+                    }
+                    throw new Error(errorMsg);
+                }
+
+                const entityTypesData = await entityTypesRes.json();
+                const activityTypesData = await activityTypesRes.json();
+                setAutocompleteData({
+                    entityTypes: entityTypesData.types || [],
+                    activityTypes: activityTypesData.types || [],
+                });
+                onConfigSave(config);
+            } catch (error) {
+                console.error("Failed to fetch autocomplete data:", error);
+                setError(error instanceof Error ? error.message : "An unknown error occurred. Check the console and backend for details.");
+            }
         }
     };
 
@@ -206,6 +246,16 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
         <div className="min-h-screen bg-gray-100 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8 flex flex-col items-center">
             <div className="w-full max-w-2xl">
                 <Card className="w-full max-h-[90vh] overflow-y-auto">
+                    {error && (
+                        <div className="p-4 mb-4 text-sm text-red-700 bg-red-100 rounded-lg dark:bg-red-200 dark:text-red-800" role="alert">
+                            <span className="font-medium">Error!</span> {error}
+                        </div>
+                    )}
+                    {!onCancel && (
+                        <div className="p-4 mb-4 text-sm text-blue-700 bg-blue-100 rounded-lg dark:bg-blue-200 dark:text-blue-800" role="alert">
+                            <span className="font-medium">Welcome!</span> Please configure your process details to get started.
+                        </div>
+                    )}
                     <CardHeader>
                         <CardTitle>Technical Process Configuration</CardTitle>
                         <CardDescription>
