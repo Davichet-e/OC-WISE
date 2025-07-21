@@ -60,6 +60,7 @@ export interface CreatedNorm {
   norm_id: string;
   description: string;
   weight?: number;
+  enabled: boolean;
   [key: string]: any;
 }
 
@@ -209,16 +210,19 @@ const getPredefinedNodesAndEdges = (
 interface GraphNormCreatorInternalProps {
   globalProcessConfig: GlobalProcessConfig;
   onBackToTechConfig: () => void;
+  createdNorms: CreatedNorm[];
+  setCreatedNorms: React.Dispatch<React.SetStateAction<CreatedNorm[]>>;
+  onDeleteNorm: (normId: string) => void;
+  onToggleNorm: (normId: string) => void;
 }
 
 const MIN_PANEL_WIDTH = 320;
 const MAX_PANEL_WIDTH = 900;
 
-const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ globalProcessConfig, onBackToTechConfig }) => {
+const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ globalProcessConfig, onBackToTechConfig, createdNorms, setCreatedNorms, onDeleteNorm, onToggleNorm }) => {
   const [nodes, setNodes, onNodesChangeInternal] = useNodesState<CustomNodeData>([]);
   const [edges, setEdges, onEdgesChangeInternal] = useEdgesState<AppEdge['data']>([]);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<CustomNodeData, AppEdge['data']> | null>(null);
-  const [createdNorms, setCreatedNorms] = useState<CreatedNorm[]>([]);
   const [selectedNormType, setSelectedNormType] = useState<NormTypeValue>(NORM_TYPES.AVERAGE_TIME_BETWEEN_ACTIVITIES);
   const [currentGlobalNormDetails, setCurrentGlobalNormDetails] = useState<GlobalNormDetails>(initialGlobalNormDetails);
   const [selectedElement, setSelectedElement] = useState<any>(null);
@@ -702,11 +706,11 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
             </Button>
           </div>
           <div className="flex-grow overflow-y-auto">
-            <NormsTable norms={createdNorms} />
+            <NormsTable norms={createdNorms} onDelete={onDeleteNorm} onToggle={onToggleNorm} />
             <h2 className="text-xl font-semibold mt-6 mb-3">Generated JSON Output</h2>
             <textarea
               readOnly
-              value={JSON.stringify({ config: globalProcessConfig, norms: createdNorms, }, null, 2)}
+              value={JSON.stringify({ config: globalProcessConfig, norms: createdNorms.filter(n => n.enabled) }, null, 2)}
               rows={10}
               className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-xs font-mono"
             />
@@ -723,6 +727,7 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
 
 const App: React.FC = () => {
   const { config, setConfig, isConfigSet, setIsConfigSet } = useGlobalConfig();
+  const [createdNorms, setCreatedNorms] = useState<CreatedNorm[]>([]);
 
   const handleConfigSave = (newConfig: GlobalProcessConfig) => {
     setConfig(newConfig);
@@ -731,6 +736,14 @@ const App: React.FC = () => {
 
   const handleBackToTechConfig = () => {
     setIsConfigSet(false);
+  };
+
+  const handleDeleteNorm = (normId: string) => {
+    setCreatedNorms(prev => prev.filter(n => n.norm_id !== normId));
+  };
+
+  const handleToggleNorm = (normId: string) => {
+    setCreatedNorms(prev => prev.map(n => n.norm_id === normId ? { ...n, enabled: !n.enabled } : n));
   };
 
   if (!isConfigSet) {
@@ -743,7 +756,14 @@ const App: React.FC = () => {
 
   return (
     <ReactFlowProvider>
-      <GraphNormCreatorInternal globalProcessConfig={config} onBackToTechConfig={handleBackToTechConfig} />
+      <GraphNormCreatorInternal 
+        globalProcessConfig={config} 
+        onBackToTechConfig={handleBackToTechConfig} 
+        createdNorms={createdNorms}
+        setCreatedNorms={setCreatedNorms}
+        onDeleteNorm={handleDeleteNorm}
+        onToggleNorm={handleToggleNorm}
+      />
     </ReactFlowProvider>
   );
 };

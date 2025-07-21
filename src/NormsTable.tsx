@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from "react";
 import { CreatedNorm } from "./App";
 
-
 interface NormsTableProps {
     norms: CreatedNorm[];
+    onDelete: (normId: string) => void;
+    onToggle: (normId: string) => void;
 }
 
 const NORM_TYPE_LABELS: Record<string, string> = {
@@ -15,7 +16,7 @@ const NORM_TYPE_LABELS: Record<string, string> = {
     EntityPropertyValueNorm: "Entity Property Value",
 };
 
-export const NormsTable: React.FC<NormsTableProps> = ({ norms }) => {
+export const NormsTable: React.FC<NormsTableProps> = ({ norms, onDelete, onToggle }) => {
     const [filter, setFilter] = useState<string>("all");
     const [search, setSearch] = useState<string>("");
 
@@ -79,22 +80,31 @@ export const NormsTable: React.FC<NormsTableProps> = ({ norms }) => {
                             <th className="px-3 py-2 text-left font-semibold">Details</th>
                             <th className="px-3 py-2 text-left font-semibold">Description</th>
                             <th className="px-3 py-2 text-left font-semibold">Weight</th>
+                            <th className="px-3 py-2 text-left font-semibold">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                         {filteredNorms.length === 0 ? (
                             <tr>
-                                <td colSpan={4} className="text-center py-4 text-gray-500 dark:text-gray-400">
+                                <td colSpan={5} className="text-center py-4 text-gray-500 dark:text-gray-400">
                                     No norms found. Add one from the panel on the left.
                                 </td>
                             </tr>
                         ) : (
                             filteredNorms.map((norm, idx) => (
-                                <tr key={norm.norm_id || idx} className="hover:bg-gray-50 dark:hover:bg-gray-750">
+                                <tr key={norm.norm_id || idx} className={`hover:bg-gray-50 dark:hover:bg-gray-750 ${!norm.enabled ? 'opacity-50 bg-gray-100 dark:bg-gray-800' : ''}`}>
                                     <td className="px-3 py-2 whitespace-nowrap"><span className="font-medium">{NORM_TYPE_LABELS[norm.norm_type] || norm.norm_type}</span><br /><span className="text-gray-500">{norm.norm_id}</span></td>
                                     <td className="px-3 py-2 font-mono">{getPropertyDetails(norm)}</td>
                                     <td className="px-3 py-2">{norm.description}</td>
                                     <td className="px-3 py-2 text-center">{norm.weight?.toFixed(1) ?? ""}</td>
+                                    <td className="px-3 py-2 text-center">
+                                        <button onClick={() => onToggle(norm.norm_id)} className={`mr-2 px-2 py-1 rounded ${norm.enabled ? 'bg-green-500 text-white' : 'bg-gray-500 text-white'}`}>
+                                            {norm.enabled ? 'On' : 'Off'}
+                                        </button>
+                                        <button onClick={() => onDelete(norm.norm_id)} className="px-2 py-1 rounded bg-red-500 text-white">
+                                            Delete
+                                        </button>
+                                    </td>
                                 </tr>
                             ))
                         )}
