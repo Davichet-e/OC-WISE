@@ -8,6 +8,8 @@ To run the backend, just install requirements from `requirements.txt` (`pip inst
 
 For the frontend, install the dependencies using `npm install`, then run `npm run dev`.
 
+To run the Entity to Entity Process Norms, you need the DF_ENTITY relationship, it can be created running the `create_df_entity_relationship` function in `backend.py`.
+
 # Data
 To create an EKG from an OCEL 2.0 file. Execute first `create_ekg.py` using: `python create_ekg.py`, follow the instructions on the beginning of the file. An example dataset can be found in https://zenodo.org/records/8412920
 
