@@ -345,6 +345,13 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
         alert("Both source and target nodes in the graph must have a name. Select a node and set its name in the sidebar.");
         return false;
       }
+      // Make Threshold Seconds mandatory for AverageTimeBetweenActivitiesNorm
+      if (selectedNormType === NORM_TYPES.AVERAGE_TIME_BETWEEN_ACTIVITIES) {
+        if (!currentGlobalNormDetails.threshold_seconds || isNaN(Number(currentGlobalNormDetails.threshold_seconds))) {
+          alert("Threshold Seconds is required and must be a valid number.");
+          return false;
+        }
+      }
     }
 
     if (isOneNodeNorm) {
