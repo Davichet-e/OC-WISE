@@ -103,6 +103,39 @@ def execute_query(driver: Optional[Driver], query: str, parameters: Optional[Dic
         return None
 
 
+def create_df_entity_relationship(driver: Optional[Driver], config: Dict[str, Any]):
+    """
+    Executes the Cypher query to create the DF_ENTITY relationship.
+    Uses parameters from the config dictionary.
+    """
+    if not driver:
+         print("\n=== DF_ENTITY Creation Skipped - No Driver ===")
+         return
+
+    print("\n=== Creating DF_ENTITY Relationships ===")
+    entity_label = config['entity_node_label']
+    event_label = config['event_node_label']
+    corr_rel = config['corr_rel_name']
+    df_rel = config['df_rel_name']
+    df_entity_rel = config['df_entity_rel_name'] # Use the name from config
+
+    # Cypher query to create the DF_ENTITY relationship based on shortest event path
+    cypher_query = f"""
+    MATCH (e1:{entity_label})
+    MATCH p = SHORTEST 1 (e1)<-[:{corr_rel}]-(:{event_label})-[:{df_rel}*1..3]->(:{event_label})-[:{corr_rel}]->(e2:{entity_label})
+    WHERE e1 <> e2
+    WITH e1, e2
+    ORDER BY e2.time ASC
+    WITH e1, head(collect(e2)) as first_e2
+    MERGE (e1)-[r:{df_entity_rel}]->(first_e2)
+    RETURN count(r) as relationships_merged // Return count for confirmation
+    """
+
+    print(f"Executing DF_ENTITY creation query...")
+    execute_query(driver, cypher_query)
+    print("=== DF_ENTITY Relationship Creation Complete ===")
+
+
 # --- Reporting ---
 
 def format_aggregation_results(norm_id: str, description: str, results: Optional[List[Dict]]) -> str:
