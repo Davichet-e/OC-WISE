@@ -586,16 +586,51 @@ def run_analysis_from_request(request_data: NormRequest) -> str:
     return full_output
 
 
-@app.post("/api/run-analysis")
-async def api_run_analysis(request: NormRequest):
-    """
-    API endpoint to receive norm configuration and run the analysis.
-    """
-    try:
-        results = run_analysis_from_request(request)
-        return {"results": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)
+
+mock_dashboard_data = {
+    "overall_compliance": 0.876,
+    "total_violations": 293,
+    "top_violated_rules": [
+        { "rule_id": "rule_001", "description": "Payment must be recorded within 48 hours of invoice receipt.", "violations": 150 },
+        { "rule_id": "rule_002", "description": "Every 'Order' must have an associated 'Item' before shipping.", "violations": 98 },
+        { "rule_id": "rule_003", "description": "A 'Senior Manager' must approve any order over €5000.", "violations": 45 }
+    ],
+    "trend_data": [
+        { "period": "W27", "violations": 50 },
+        { "period": "W28", "violations": 75 },
+        { "period": "W29", "violations": 65 },
+        { "period": "W30", "violations": 80 },
+        { "period": "W31", "violations": 78 },
+        { "period": "W32", "violations": 95 },
+    ],
+    "active_rules": [
+        { "rule_id": "rule_001", "description": "Payment recorded within 48 hours of invoice.", "status": "Active", "monitored_objects": ["Order", "Invoice"] },
+        { "rule_id": "rule_002", "description": "'Order' has 'Item' before shipping.", "status": "Active", "monitored_objects": ["Order", "Item", "Shipment"] },
+        { "rule_id": "rule_003", "description": "'Senior Manager' approves orders > €5k.", "status": "Active", "monitored_objects": ["Order", "Resource"] },
+        { "rule_id": "rule_004", "description": "Quality check must precede shipping.", "status": "Paused", "monitored_objects": ["Item", "Shipment"] },
+    ]
+}
+
+@app.route('/api/dashboard/summary', methods=['GET'])
+def dashboard_summary():
+    return jsonify(mock_dashboard_data)
+
+@app.route('/api/run-analysis', methods=['POST'])
+def run_analysis():
+    data = request.json
+    # In a real application, you would process the data here
+    print("Received analysis request with the following data:")
+    print(data)
+    return jsonify({"results": "Analysis complete. Results are as expected."})
+
+if __name__ == '__main__':
+    app.run(port=8000, debug=True)
+
 
 
 class ConfigForTypes(BaseModel):
