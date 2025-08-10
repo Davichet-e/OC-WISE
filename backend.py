@@ -10,6 +10,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
+import traceback
+import uuid
 
 # --- Configuration & Parameters ---
 
@@ -29,11 +31,13 @@ CONFIG = {
     "neo4j_user": os.environ.get("NEO4J_USER", "neo4j"),
     "neo4j_password": os.environ.get("NEO4J_PASSWORD", "12345678"),
     # --- New Attribute Storage Configuration ---
-    "attribute_storage_strategy": "property",  # Can be 'property' or 'node'
-    "attribute_node_label": "Attribute",
+    "attributeStorage": "property",  # Can be 'property' or 'node'
+    "attributeNodeLabel": "Attribute",
     "attribute_rel_name": "HAS_ATTRIBUTE",
     "attribute_name_property": "name",
     "attribute_value_property": "value",
+    "analysis_run_node_label": "AnalysisRun",
+    "generated_in_rel_name": "GENERATED_IN",
 }
 
 # --- Pydantic Models ---
@@ -190,6 +194,92 @@ class ProcessNorm(ABC):
     @abstractmethod
     def generate_aggregation_query(self, config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Dict]]:
         pass
+    
+    def _build_single_filter_expression(self, node_alias: str, filter_data: Dict, param_prefix: str) -> Tuple[str, Dict]:
+        """Builds a single Cypher condition from a filter dictionary."""
+        prop_name = filter_data['property_name']
+        operator = filter_data['property_operator']
+        value = filter_data['property_value']
+        data_type = filter_data.get('property_data_type', 'string')
+
+        prop_accessor = f"{node_alias}.`{prop_name}`"
+        params = {}
+
+        if data_type == 'datetime':
+            op_map = {"before": "<", "after": ">"}
+            if operator == 'between':
+                val_end = filter_data['property_value_end']
+                start_param, end_param = f"{param_prefix}_start", f"{param_prefix}_end"
+                params[start_param], params[end_param] = value, val_end
+                return f"({prop_accessor} >= datetime(${start_param}) AND {prop_accessor} <= datetime(${end_param}))", params
+            elif operator in op_map:
+                param_name = param_prefix
+                params[param_name] = value
+                return f"({prop_accessor} {op_map[operator]} datetime(${param_name}))", params
+        else:  # string or number
+            op_map = {"==": "=", "!=": "<>", ">": ">", "<": "<", ">=": ">=", "<=": "<=", "in": "IN", "not in": "NOT IN"}
+            if operator in op_map:
+                param_name = param_prefix
+                params[param_name] = value
+                return f"({prop_accessor} IS NOT NULL AND {prop_accessor} {op_map[operator]} ${param_name})", params
+        
+        return "", {} # Return empty if operator is not supported for the type
+
+    def _build_filter_clause(self, node_alias: str, filters: List[Dict]) -> Tuple[str, Dict]:
+        """Builds a full WHERE clause from a list of filters, supporting both property and node attribute storage."""
+        if not filters:
+            return "", {}
+
+        config = getattr(self, "config", CONFIG)  # fallback to global CONFIG if not set
+        attribute_storage = config.get("attributeStorage", "property")
+        all_clauses = []
+        all_params = {}
+
+        for i, f in enumerate(filters):
+            prop_name = f['property_name']
+            operator = f['property_operator']
+            value = f['property_value']
+            data_type = f.get('property_data_type', 'string')
+            param_prefix = f"exec_filter_{i}"
+
+            if attribute_storage == 'node':
+                # Attribute stored as related node
+                attr_rel = config.get("attribute_rel_name", "HAS_ATTRIBUTE")
+                attr_label = config.get("attributeNodeLabel", "Attribute")
+                attr_name_prop = config.get("attribute_name_property", "name")
+                attr_value_prop = config.get("attribute_value_property", "value")
+                attr_alias = f"attr_{i}"
+
+                # Build MATCH for attribute node (strict filtering)
+                match_clause = f"MATCH ({node_alias})-[:`{attr_rel}`]->({attr_alias}:`{attr_label}` {{ `{attr_name_prop}`: '{prop_name}' }})"
+                op_map = {"==": "=", "!=": "<>", ">": ">", "<": "<", ">=": ">=", "<=": "<=", "in": "IN", "not in": "NOT IN"}
+                cypher_op = op_map.get(operator)
+                if cypher_op:
+                    param_name = param_prefix
+                    all_params[param_name] = value
+                    filter_expr = f"({attr_alias}.`{attr_value_prop}` IS NOT NULL AND {attr_alias}.`{attr_value_prop}` {cypher_op} ${param_name})"
+                    all_clauses.append(match_clause)
+                    all_clauses.append(filter_expr)
+            else:
+                # Attribute stored as property
+                clause, params = self._build_single_filter_expression(node_alias, f, param_prefix)
+                if clause:
+                    all_clauses.append(clause)
+                    all_params.update(params)
+
+        if not all_clauses:
+            return "", {}
+
+        if attribute_storage == 'node':
+            # Split MATCH and WHERE
+            match_clauses = [c for c in all_clauses if c.startswith("MATCH")]
+            where_clauses = [c for c in all_clauses if not c.startswith("MATCH")]
+            match_str = "\n".join(match_clauses)
+            where_str = " AND ".join(where_clauses)
+            clause_str = f"{match_str}\nWHERE {where_str}" if where_str else match_str
+            return clause_str, all_params
+        else:
+            return f"WHERE {' AND '.join(all_clauses)}", all_params
 
     def _generate_aggregation_query_template(
             self,
@@ -207,11 +297,11 @@ class ProcessNorm(ABC):
                    {',\n                   '.join(aggregation_expressions)}
             """
 
-        attribute_storage = config.get("attribute_storage_strategy", "property")
+        attribute_storage = config.get("attributeStorage", "property")
 
         if attribute_storage == 'node':
             attr_rel = config.get("attribute_rel_name", "HAS_ATTRIBUTE")
-            attr_label = config.get("attribute_node_label", "Attribute")
+            attr_label = config.get("attributeNodeLabel", "Attribute")
             attr_name_prop = config.get("attribute_name_property", "name")
             attr_value_prop = config.get("attribute_value_property", "value")
 
@@ -278,34 +368,36 @@ class ProcessNorm(ABC):
 
 class AverageTimeBetweenActivitiesNorm(ProcessNorm):
     def generate_diagnostic_query(self, config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Dict]]:
-        activity_a = params.get("activity_a")
-        activity_b = params.get("activity_b")
-        threshold_seconds = params.get("threshold_seconds")
-        threshold_condition = params.get("threshold_condition", "less than")
-
-        if not all([activity_a, activity_b, threshold_seconds is not None]):
-            print("Error [AvgTime]: Missing required parameters.")
-            return None
-
+        # Behavior parameters
+        activity_a, activity_b = params.get("activity_a"), params.get("activity_b")
+        threshold_seconds, threshold_condition = params.get("threshold_seconds"), params.get("threshold_condition", "less than")
+        if not all([activity_a, activity_b, threshold_seconds is not None]): return None
         operator = "<" if threshold_condition == "less than" else ">"
 
+        # Logic for execution_filters
+        execution_filters = params.get("execution_filters", [])
+        filter_conditions, filter_params = self._build_filter_clause("ev_a", execution_filters)
+        additional_where = f"AND {filter_conditions}" if filter_conditions else ""
+
+        # Query with added filter conditions
         query = f"""
         MATCH (ev_a:{config['event_node_label']} {{ `{config['activity_property']}`: $activity_a }})
         MATCH (ev_b:{config['event_node_label']} {{ `{config['activity_property']}`: $activity_b }})
-        WHERE ev_a.`{config['timestamp_property']}` < ev_b.`{config['timestamp_property']}`
+        WHERE ev_a.`{config['timestamp_property']}` < ev_b.`{config['timestamp_property']}` {additional_where}
         WITH ev_a, ev_b, duration.inSeconds(ev_a.`{config['timestamp_property']}`, ev_b.`{config['timestamp_property']}`) as dur
         WHERE dur IS NOT NULL
         WITH ev_a, ev_b, dur.seconds as duration_seconds, (dur.seconds {operator} $threshold_seconds) as complies
         MERGE (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id, related_id: elementId(ev_a) + '_' + elementId(ev_b) }})
-        ON CREATE SET diag.complies = complies, diag.duration_seconds = duration_seconds, diag.last_checked = datetime()
-        SET diag.complies = complies, diag.duration_seconds = duration_seconds, diag.last_checked = datetime()
+        SET diag.complies = complies, diag.duration_seconds = duration_seconds
         MERGE (ev_a)-[:{config['compliance_rel_name']}]->(diag)
         MERGE (ev_b)-[:{config['compliance_rel_name']}]->(diag)
+
+        WITH diag
+        MATCH (run:{config['analysis_run_node_label']} {{ run_id: $run_id }})
+        MERGE (diag)-[:`{config['generated_in_rel_name']}`]->(run)
         """
-        return query, {
-            "activity_a": activity_a, "activity_b": activity_b,
-            "threshold_seconds": threshold_seconds, "norm_id": self.norm_id
-        }
+        query_params = {**params, **filter_params}
+        return query, query_params
 
     def generate_aggregation_query(self, config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Dict]]:
         match_clause = f"MATCH (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id }})<-[:{config['compliance_rel_name']}]-(start_node) WHERE diag.duration_seconds IS NOT NULL"
@@ -324,22 +416,25 @@ class AverageTimeBetweenActivitiesNorm(ProcessNorm):
 
 class EntityFollowsEntityNorm(ProcessNorm):
     def generate_diagnostic_query(self, config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Dict]]:
-        entity_type_a = params.get("entity_type_a")
-        entity_type_b = params.get("entity_type_b")
-        if not entity_type_a or not entity_type_b:
-            print("Error [EntityFollows]: entity_type_a and entity_type_b are required.")
-            return None
+        entity_type_a, entity_type_b = params.get("entity_type_a"), params.get("entity_type_b")
+        if not entity_type_a or not entity_type_b: return None
+
+        execution_filters = params.get("execution_filters", [])
+        filter_conditions, filter_params = self._build_filter_clause("ea", execution_filters)
+        where_clause = f"WHERE {filter_conditions}" if filter_conditions else ""
 
         query = f"""
         MATCH (ea:{config['entity_node_label']} {{ `{config['entity_filter_property']}`: $entity_type_a }})
         OPTIONAL MATCH (ea)-[:`{config['df_entity_rel_name']}`]->(eb:{config['entity_node_label']} {{ `{config['entity_filter_property']}`: $entity_type_b }})
         WITH ea, (eb IS NOT NULL) as complies
         MERGE (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id, related_id: elementId(ea) }})
-        ON CREATE SET diag.complies = complies, diag.last_checked = datetime()
-        SET diag.complies = complies, diag.last_checked = datetime()
-        MERGE (ea)-[:{config['compliance_rel_name']}]->(diag)
+        SET diag.complies = complies
+        WITH diag
+        MATCH (run:{config['analysis_run_node_label']} {{ run_id: $run_id }})
+        MERGE (diag)-[:`{config['generated_in_rel_name']}`]->(run)
         """
-        return query, {"entity_type_a": entity_type_a, "entity_type_b": entity_type_b, "norm_id": self.norm_id}
+        query_params = {**params, **filter_params}
+        return query, query_params
 
     def generate_aggregation_query(self, config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Dict]]:
         match_clause = f"MATCH (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id }})<-[:{config['compliance_rel_name']}]-(entity)"
@@ -355,49 +450,44 @@ class EntityFollowsEntityNorm(ProcessNorm):
 
 class EventToEntityRelationshipNorm(ProcessNorm):
     def generate_diagnostic_query(self, config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Dict]]:
-        context_entity_type = params.get("context_entity_type")
-        target_activity = params.get("target_activity")
-        operator = params.get("operator")
-        count = params.get("count")
+        context_entity_type, target_activity = params.get("context_entity_type"), params.get("target_activity")
+        operator, count = params.get("operator"), params.get("count")
+        if not all([context_entity_type, target_activity, operator]): return None
 
-        if not all([context_entity_type, target_activity, operator]):
-            print("Error [EventToEntity]: Missing required parameters.")
-            return None
+        execution_filters = params.get("execution_filters", [])
+        filter_conditions, filter_params = self._build_filter_clause("ctx", execution_filters)
+        where_clause = f"WHERE {filter_conditions}" if filter_conditions else ""
 
         op_map = {"exists": ">", "not exists": "=", "==": "=", "!=": "<>", ">": ">", "<": "<", ">=": ">=", "<=": "<="}
         cypher_op = op_map.get(operator)
-        if not cypher_op:
-            print(f"Error [EventToEntity]: Invalid operator '{operator}'.")
-            return None
-
-        if operator in ['exists', 'not exists']:
-            count = 0
-        elif count is None:
-            print(f"Error [EventToEntity]: 'count' parameter is required for operator '{operator}'.")
-            return None
-
+        if not cypher_op: return None
+        if operator in ['exists', 'not exists']: count = 0
+        elif count is None: return None
+        
         query = f"""
         MATCH (ctx:{config['entity_node_label']} {{ `{config['entity_filter_property']}`: $context_entity_type }})
+        {where_clause}
         OPTIONAL MATCH (ctx)<-[:{config['corr_rel_name']}]-(ev:{config['event_node_label']} {{ `{config['activity_property']}`: $target_activity }})
         WITH ctx, count(ev) as actual_count
         WITH ctx, actual_count, (actual_count {cypher_op} $count) as complies
         MERGE (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id, related_id: elementId(ctx) }})
-        ON CREATE SET diag.complies = complies, diag.actual_count = actual_count, diag.last_checked = datetime()
-        SET diag.complies = complies, diag.actual_count = actual_count, diag.last_checked = datetime()
+        SET diag.complies = complies, diag.actual_count = actual_count
         MERGE (ctx)-[:{config['compliance_rel_name']}]->(diag)
+
+        WITH diag
+        MATCH (run:{config['analysis_run_node_label']} {{ run_id: $run_id }})
+        MERGE (diag)-[:`{config['generated_in_rel_name']}`]->(run)
         """
-        return query, {
-            "context_entity_type": context_entity_type, "target_activity": target_activity,
-            "count": count, "norm_id": self.norm_id
-        }
+        query_params = {**params, **filter_params}
+        return query, query_params
 
     def generate_aggregation_query(self, config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Dict]]:
         match_clause = f"MATCH (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id }})<-[:{config['compliance_rel_name']}]-(ctx) WHERE diag.actual_count IS NOT NULL"
         grouping_properties = params.get("aggregation_properties", [])
         expressions = [
-            "avg(diag.duration_seconds) as avg_count",
-            "min(diag.duration_seconds) as min_count",
-            "max(diag.duration_seconds) as max_count",
+            "avg(diag.actual_count) as avg_count",
+            "min(diag.actual_count) as min_count",
+            "max(diag.actual_count) as max_count",
             "count(diag) as total_entities",
             "SUM(CASE WHEN diag.complies THEN 1 ELSE 0 END) as compliant_entities"
         ]
@@ -407,24 +497,29 @@ class EventToEntityRelationshipNorm(ProcessNorm):
 
 class ActivityDirectlyFollowsNorm(ProcessNorm):
     def generate_diagnostic_query(self, config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Dict]]:
-        activity_a = params.get("activity_a")
-        activity_b = params.get("activity_b")
-        forbidden = params.get("forbidden", False)
-        if not activity_a or not activity_b:
-            print("Error [ActivityDirectlyFollows]: activity_a and activity_b are required.")
-            return None
+        activity_a, activity_b, forbidden = params.get("activity_a"), params.get("activity_b"), params.get("forbidden", False)
+        if not activity_a or not activity_b: return None
 
+        execution_filters = params.get("execution_filters", [])
+        filter_conditions, filter_params = self._build_filter_clause("ev_a", execution_filters)
+        where_clause = f"WHERE {filter_conditions}" if filter_conditions else ""
+        
         query = f"""
         MATCH (ev_a:{config['event_node_label']} {{ `{config['activity_property']}`: $activity_a }})
+        {where_clause}
         OPTIONAL MATCH (ev_a)-[:{config['df_rel_name']}]->(ev_b:{config['event_node_label']} {{ `{config['activity_property']}`: $activity_b }})
         WITH ev_a, (ev_b IS NOT NULL) as directly_follows
         WITH ev_a, directly_follows, (directly_follows = ${not forbidden}) as complies
         MERGE (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id, related_id: elementId(ev_a) }})
-        ON CREATE SET diag.complies = complies, diag.last_checked = datetime()
-        SET diag.complies = complies, diag.last_checked = datetime()
+        SET diag.complies = complies
         MERGE (ev_a)-[:{config['compliance_rel_name']}]->(diag)
+
+        WITH diag
+        MATCH (run:{config['analysis_run_node_label']} {{ run_id: $run_id }})
+        MERGE (diag)-[:`{config['generated_in_rel_name']}`]->(run)
         """
-        return query, {"activity_a": activity_a, "activity_b": activity_b, "norm_id": self.norm_id}
+        query_params = {**params, **filter_params}
+        return query, query_params
 
     def generate_aggregation_query(self, config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Dict]]:
         match_clause = f"MATCH (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id }})<-[:{config['compliance_rel_name']}]-(event)"
@@ -444,11 +539,7 @@ class PropertyValueNorm(ProcessNorm):
         pass
 
     def generate_diagnostic_query(self, config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Dict]]:
-        target_name = params.get("target_name")
-        property_name = params.get("property_name")
-        operator = params.get("operator")
-        value = params.get("value")
-
+        target_name, property_name, operator, value = params.get("target_name"), params.get("property_name"), params.get("operator"), params.get("value")
         if not all([target_name, property_name, operator, value is not None]):
             print("Error [PropertyValue]: Missing required parameters.")
             return None
@@ -459,36 +550,56 @@ class PropertyValueNorm(ProcessNorm):
             print(f"Error [PropertyValue]: Invalid operator '{operator}'.")
             return None
 
-        attribute_storage = config.get("attribute_storage_strategy", "property")
-        match_clause = self.get_node_match(config, params)
-        query_params = {"value": value, "norm_id": self.norm_id, "target_name": target_name,
-                        "property_name": property_name}
+        # --- Step 2: ADDED logic for execution_filters ---
+        execution_filters = params.get("execution_filters", [])
+        filter_conditions, filter_params = self._build_filter_clause("n", execution_filters)
+        where_clause = f"{filter_conditions}" if filter_conditions else ""
 
+        # --- Step 3: Combine original behavior with added filters ---
+        attribute_storage = config.get("attributeStorage", "property")
+        match_clause = self.get_node_match(config, params)
+        
+        # This is the original logic you provided, now with the `where_clause` added
         if attribute_storage == 'node':
             attr_rel = config.get("attribute_rel_name", "HAS_ATTRIBUTE")
-            attr_label = config.get("attribute_node_label", "Attribute")
+            attr_label = config.get("attributeNodeLabel", "Attribute")
             attr_name_prop = config.get("attribute_name_property", "name")
             attr_value_prop = config.get("attribute_value_property", "value")
-
             query = f"""
             {match_clause}
+            {where_clause}
             WITH n
             OPTIONAL MATCH (n)-[:`{attr_rel}`]->(attr:`{attr_label}` {{ `{attr_name_prop}`: $property_name }})
-            WITH n, (attr IS NOT NULL AND attr.`{attr_value_prop}` {cypher_op} $value) as complies
+            WITH n, (attr IS NOT NULL AND attr.`{attr_value_prop}` IS NOT NULL AND attr.`{attr_value_prop}` {cypher_op} $value) as complies
             MERGE (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id, related_id: elementId(n) }})
-            ON CREATE SET diag.complies = complies, diag.last_checked = datetime()
-            SET diag.complies = complies, diag.last_checked = datetime()
+            SET diag.complies = complies
             MERGE (n)-[:{config['compliance_rel_name']}]->(diag)
             """
         else:  # 'property'
             query = f"""
             {match_clause}
+            {where_clause}
             WITH n, (n.`{property_name}` IS NOT NULL AND n.`{property_name}` {cypher_op} $value) as complies
             MERGE (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id, related_id: elementId(n) }})
-            ON CREATE SET diag.complies = complies, diag.last_checked = datetime()
-            SET diag.complies = complies, diag.last_checked = datetime()
+            SET diag.complies = complies
             MERGE (n)-[:{config['compliance_rel_name']}]->(diag)
             """
+        query += f"""
+        WITH diag
+        MATCH (run:{config['analysis_run_node_label']} {{ run_id: $run_id }})
+        MERGE (diag)-[:`{config['generated_in_rel_name']}`]->(run)
+        """
+        print(query)
+
+        # Combine parameters from the main check and the added filters
+        query_params = {
+            "value": value,
+            "norm_id": self.norm_id,
+            "target_name": target_name,
+            "property_name": property_name,
+            "run_id": params.get("run_id"),
+            **filter_params
+        }
         return query, query_params
 
     def generate_aggregation_query(self, config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Dict]]:
@@ -524,7 +635,7 @@ NORM_CLASS_MAP = {
 }
 
 
-def parse_and_run_norms(driver: Optional[Driver], config: Dict[str, Any], data: Dict[str, Any]) -> List[str]:
+def parse_and_run_norms(driver: Optional[Driver], config: Dict[str, Any], data: Dict[str, Any], run_id: str) -> List[str]:
     reports = []
     json_config = data.get("config", {})
     config.update(json_config)
@@ -543,7 +654,10 @@ def parse_and_run_norms(driver: Optional[Driver], config: Dict[str, Any], data: 
                 description=norm_data["description"],
                 weight=norm_data.get("weight", 1.0)
             )
-            report = norm.run_analysis(driver, config, norm_data)
+            norm_params = {**norm_data, "run_id": run_id}
+            print("Test")
+            print(norm_params)
+            report = norm.run_analysis(driver, config, norm_params)
             if report:
                 reports.append(report)
         except KeyError as e:
@@ -552,125 +666,194 @@ def parse_and_run_norms(driver: Optional[Driver], config: Dict[str, Any], data: 
             print(f"An error occurred while running norm {norm_data.get('norm_id')}: {e}")
     return reports
 
-
-def run_analysis_from_request(request_data: NormRequest) -> str:
-    """
-    Runs the full analysis based on the request data and captures the output.
-    """
-    driver = get_neo4j_driver()
-    if not driver:
-        return "Error: Could not connect to Neo4j database."
-
-    # This will capture the print() statements for connection status, query execution, etc.
-    old_stdout = sys.stdout
-    sys.stdout = captured_output = io.StringIO()
-
-    reports = []
-    try:
-        base_config = CONFIG.copy()
-        # This function now returns a list of report strings
-        reports = parse_and_run_norms(driver, base_config, request_data.model_dump())
-    except Exception as e:
-        print(f"\n--- UNEXPECTED ERROR ---")
-        print(f"An error occurred during analysis: {e}")
-        import traceback
-        traceback.print_exc(file=sys.stdout)
-    finally:
-        sys.stdout = old_stdout
-        log_output = captured_output.getvalue()
-        driver.close()
-        print("\nNeo4j connection closed.")
-
-    # Combine the logs and the structured reports
-    full_output = log_output + "\n\n" + "\n".join(reports)
-    return full_output
-
-
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-
-app = Flask(__name__)
-CORS(app)
-
-mock_dashboard_data = {
-    "overall_compliance": 0.876,
-    "total_violations": 293,
-    "top_violated_rules": [
-        { "rule_id": "rule_001", "description": "Payment must be recorded within 48 hours of invoice receipt.", "violations": 150 },
-        { "rule_id": "rule_002", "description": "Every 'Order' must have an associated 'Item' before shipping.", "violations": 98 },
-        { "rule_id": "rule_003", "description": "A 'Senior Manager' must approve any order over €5000.", "violations": 45 }
-    ],
-    "trend_data": [
-        { "period": "W27", "violations": 50 },
-        { "period": "W28", "violations": 75 },
-        { "period": "W29", "violations": 65 },
-        { "period": "W30", "violations": 80 },
-        { "period": "W31", "violations": 78 },
-        { "period": "W32", "violations": 95 },
-    ],
-    "active_rules": [
-        { "rule_id": "rule_001", "description": "Payment recorded within 48 hours of invoice.", "status": "Active", "monitored_objects": ["Order", "Invoice"] },
-        { "rule_id": "rule_002", "description": "'Order' has 'Item' before shipping.", "status": "Active", "monitored_objects": ["Order", "Item", "Shipment"] },
-        { "rule_id": "rule_003", "description": "'Senior Manager' approves orders > €5k.", "status": "Active", "monitored_objects": ["Order", "Resource"] },
-        { "rule_id": "rule_004", "description": "Quality check must precede shipping.", "status": "Paused", "monitored_objects": ["Item", "Shipment"] },
-    ]
-}
-
-@app.route('/api/dashboard/summary', methods=['GET'])
-def dashboard_summary():
-    return jsonify(mock_dashboard_data)
-
-@app.route('/api/run-analysis', methods=['POST'])
-def run_analysis():
-    data = request.json
-    # In a real application, you would process the data here
-    print("Received analysis request with the following data:")
-    print(data)
-    return jsonify({"results": "Analysis complete. Results are as expected."})
-
-if __name__ == '__main__':
-    app.run(port=8000, debug=True)
-
-
+class NormRequest(BaseModel):
+    config: Dict[str, Any]
+    norms: List[Dict[str, Any]]
 
 class ConfigForTypes(BaseModel):
     config: Dict[str, Any]
+
+class DisaggregatedViolation(BaseModel):
+    value: str
+    percentage: float
+
+class TopRule(BaseModel):
+    rule_id: str
+    description: str
+    violations: int
+    disaggregated_violations: Optional[List[DisaggregatedViolation]] = None
+
+class TrendPoint(BaseModel):
+    period: str
+    violations: int
+
+class ActiveRule(BaseModel):
+    rule_id: str
+    description: str
+    status: str
+    monitored_objects: List[str]
+
+class DashboardData(BaseModel):
+    overall_compliance: float
+    total_violations: int
+    top_violated_rules: List[TopRule]
+    trend_data: List[TrendPoint]
+    active_rules: List[ActiveRule]
+
+def run_analysis_from_request(request_data: NormRequest, run_type: str = "ad-hoc") -> str:
+    driver = get_neo4j_driver()
+    if not driver: return "Error: Could not connect to Neo4j database."
+
+    run_id = str(uuid.uuid4())
+    run_label = CONFIG['analysis_run_node_label']
+    
+    create_run_query = f"""
+    CREATE (run:{run_label} {{
+        run_id: $run_id, run_type: $run_type,
+        start_time: datetime(), status: 'running'
+    }})
+    """
+    execute_query(driver, create_run_query, {"run_id": run_id, "run_type": run_type})
+
+    old_stdout = sys.stdout
+    sys.stdout = captured_output = io.StringIO()
+    reports = []
+    try:
+        base_config = CONFIG.copy()
+        reports = parse_and_run_norms(driver, base_config, request_data.model_dump(), run_id)
+        status = 'completed'
+    except Exception:
+        status = 'failed'
+        traceback.print_exc(file=sys.stdout)
+    finally:
+        update_status_query = f"MATCH (run:{run_label} {{run_id: $run_id}}) SET run.status = $status"
+        execute_query(driver, update_status_query, {"run_id": run_id, "status": status})
+        sys.stdout = old_stdout
+        log_output = captured_output.getvalue()
+        driver.close()
+        print("Neo4j connection closed.")
+
+    return f"Analysis run {run_id} ({status}) completed.\n\n" + log_output + "\n".join(reports)
+
+# --- NEW Dashboard Logic ---
+
+def get_dashboard_summary(driver: Driver, norms_config: List[Dict[str, Any]]) -> DashboardData:
+    summary = {
+        "overall_compliance": 1.0, "total_violations": 0, "top_violated_rules": [],
+        "trend_data": [], "active_rules": []
+    }
+    norm_descriptions = {n['norm_id']: n['description'] for n in norms_config}
+    run_label = CONFIG['analysis_run_node_label']
+    diag_label = CONFIG['diagnostic_node_label']
+    gen_in_rel = CONFIG['generated_in_rel_name']
+
+    with driver.session(database="neo4j") as session:
+        latest_run_result = session.run(f"""
+            MATCH (run:{run_label} {{status: 'completed', run_type: 'scheduled'}})
+            RETURN run.run_id as run_id ORDER BY run.start_time DESC LIMIT 1
+        """).single()
+
+        if not latest_run_result:
+            print("No completed scheduled runs found for dashboard summary. Falling back to latest ad-hoc run.")
+            latest_run_result = session.run(f"""
+                MATCH (run:{run_label} {{status: 'completed', run_type: 'ad-hoc'}})
+                RETURN run.run_id as run_id ORDER BY run.start_time DESC LIMIT 1
+            """).single()
+            if not latest_run_result:
+                print("No completed runs found at all.")
+                return DashboardData(**summary)
+        
+        latest_run_id = latest_run_result['run_id']
+
+        compliance_query = f"""
+        MATCH (d:{diag_label})-[:`{gen_in_rel}`]->(:{run_label} {{run_id: $run_id}})
+        WITH count(d) AS total, count(CASE WHEN d.complies = false THEN 1 END) AS violations
+        RETURN total, violations
+        """
+        result = session.run(compliance_query, run_id=latest_run_id).single()
+        if result and result['total'] > 0:
+            summary['total_violations'] = result['violations']
+            summary['overall_compliance'] = (result['total'] - result['violations']) / result['total']
+
+        top_rules_query = f"""
+        MATCH (d:{diag_label} {{complies: false}})-[:`{gen_in_rel}`]->(:{run_label} {{run_id: $run_id}})
+        RETURN d.norm_id AS rule_id, count(d) AS violations
+        ORDER BY violations DESC LIMIT 5
+        """
+        top_rules = [TopRule(rule_id=r['rule_id'], description=norm_descriptions.get(r['rule_id'], "Unknown Rule"), violations=r['violations']) for r in session.run(top_rules_query, run_id=latest_run_id)]
+        summary['top_violated_rules'] = top_rules
+
+        trend_query = f"""
+        MATCH (run:{run_label} {{status: 'completed', run_type: 'scheduled'}})
+        WITH run ORDER BY run.start_time DESC LIMIT 6
+        MATCH (d:{diag_label} {{complies: false}})-[:`{gen_in_rel}`]->(run)
+        RETURN coalesce(run.period_value, "W" + toString(run.start_time.week)) AS period, count(d) AS violations
+        ORDER BY run.start_time
+        """
+        summary['trend_data'] = [TrendPoint(**record.data()) for record in session.run(trend_query)]
+
+    active_rules = []
+    for norm in norms_config:
+        if norm.get('enabled', True):
+            monitored = []
+            if 'activity_a' in norm: monitored.append(norm['activity_a'])
+            if 'activity_b' in norm: monitored.append(norm['activity_b'])
+            if 'entity_type_a' in norm: monitored.append(norm['entity_type_a'])
+            if 'entity_type_b' in norm: monitored.append(norm['entity_type_b'])
+            if 'context_entity_type' in norm: monitored.append(norm['context_entity_type'])
+            if 'target_activity' in norm: monitored.append(norm['target_activity'])
+            if 'target_name' in norm: monitored.append(norm['target_name'])
+            active_rules.append(ActiveRule(
+                rule_id=norm['norm_id'], description=norm['description'],
+                status='Active', monitored_objects=list(set(monitored))
+            ))
+    summary['active_rules'] = active_rules
+    
+    return DashboardData(**summary)
+
+# --- FastAPI Endpoints (Updated) ---
+
+@app.post("/api/dashboard/summary", response_model=DashboardData)
+async def dashboard_summary(request: NormRequest):
+    driver = get_neo4j_driver()
+    if not driver:
+        raise HTTPException(status_code=503, detail="Could not connect to Neo4j database.")
+    try:
+        return get_dashboard_summary(driver, request.norms)
+    finally:
+        if driver: driver.close()
+
+@app.post("/api/run-analysis")
+async def perform_analysis(request: NormRequest):
+    try:
+        analysis_output = run_analysis_from_request(request, run_type="ad-hoc")
+        return {"results": analysis_output}
+    except Exception as e:
+        print(f"Error during analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"An internal error occurred: {e}")
 
 @app.post("/api/entity-types")
 async def get_entity_types(request: ConfigForTypes):
     driver = get_neo4j_driver()
     if not driver:
         raise HTTPException(status_code=500, detail="Could not connect to Neo4j database.")
-    
     config = request.config
-    query = f"""
-    MATCH (n:{config['entityNodeLabel']})
-    WHERE n.{config['entityFilterProperty']} IS NOT NULL
-    RETURN DISTINCT n.{config['entityFilterProperty']} AS type
-    """
+    query = f"MATCH (n:{config['entityNodeLabel']}) WHERE n.{config['entityFilterProperty']} IS NOT NULL RETURN DISTINCT n.{config['entityFilterProperty']} AS type"
     results = execute_query(driver, query)
     driver.close()
-    if results is None:
-        return {"types": []}
-    return {"types": [r['type'] for r in results]}
+    return {"types": [r['type'] for r in results] if results else []}
 
 @app.post("/api/activity-types")
 async def get_activity_types(request: ConfigForTypes):
     driver = get_neo4j_driver()
     if not driver:
         raise HTTPException(status_code=500, detail="Could not connect to Neo4j database.")
-    
     config = request.config
-    query = f"""
-    MATCH (n:{config['eventNodeLabel']})
-    WHERE n.{config['activityProperty']} IS NOT NULL
-    RETURN DISTINCT n.{config['activityProperty']} AS type
-    """
+    query = f"MATCH (n:{config['eventNodeLabel']}) WHERE n.{config['activityProperty']} IS NOT NULL RETURN DISTINCT n.{config['activityProperty']} AS type"
     results = execute_query(driver, query)
     driver.close()
-    if results is None:
-        return {"types": []}
-    return {"types": [r['type'] for r in results]}
+    return {"types": [r['type'] for r in results] if results else []}
+
 
 
 if __name__ == "__main__":

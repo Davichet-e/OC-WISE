@@ -42,9 +42,10 @@ export const NormsTable: React.FC<NormsTableProps> = ({ norms, onDelete, onToggl
             case 'ActivityDirectlyFollowsNorm':
                 return `A: "${norm.activity_a}" → B: "${norm.activity_b}" (${norm.forbidden ? 'Forbidden' : 'Allowed'})`;
             case 'EventPropertyValueNorm':
-            case 'EntityPropertyValueNorm':
+            case 'EntityPropertyValueNorm': {
                 const value = Array.isArray(norm.value) ? `[${norm.value.join(', ')}]` : `"${norm.value}"`;
                 return `${norm.target_name}.${norm.property_name} ${norm.operator} ${value}`;
+            }
             default:
                 return 'N/A';
         }

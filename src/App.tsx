@@ -4,9 +4,12 @@ import { ReactFlowProvider } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './App.css';
 import TechnicalConfigurator from './TechnicalConfiguration';
-import { GlobalProcessConfig, useGlobalConfig } from './GlobalConfig';
+import { useGlobalConfig } from './GlobalConfig';
 import GraphNormCreatorInternal from './GraphNormCreator';
 import Dashboard from './Dashboard';
+
+import { Filter } from './PropertyFilter';
+import { GlobalProcessConfig } from './config';
 
 export interface CreatedNorm {
   norm_type: string;
@@ -14,7 +17,7 @@ export interface CreatedNorm {
   description: string;
   weight?: number;
   enabled: boolean;
-  [key: string]: any;
+  execution_filters?: Filter[];
 }
 
 const App: React.FC = () => {
@@ -54,9 +57,9 @@ const App: React.FC = () => {
       <Route path="/norms-editor" element={
         isConfigSet ? (
           <ReactFlowProvider>
-            <GraphNormCreatorInternal 
-              globalProcessConfig={config} 
-              onBackToTechConfig={handleBackToTechConfig} 
+            <GraphNormCreatorInternal
+              globalProcessConfig={config}
+              onBackToTechConfig={handleBackToTechConfig}
               createdNorms={createdNorms}
               setCreatedNorms={setCreatedNorms}
               onDeleteNorm={handleDeleteNorm}

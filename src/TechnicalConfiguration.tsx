@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { GlobalProcessConfig, useGlobalConfig } from './GlobalConfig';
+import { useGlobalConfig } from './GlobalConfig';
+import { GlobalProcessConfig } from './config';
 
 // Helper components (mimicking shadcn/ui with Tailwind)
 

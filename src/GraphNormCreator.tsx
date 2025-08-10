@@ -19,10 +19,12 @@ import './App.css';
 import AutocompleteInput from './AutocompleteInput';
 import { Button, Input, Label, Tooltip, InfoIcon } from './TechnicalConfiguration';
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GlobalProcessConfig, initialGlobalProcessConfig, useGlobalConfig } from './GlobalConfig';
+import { useGlobalConfig } from './GlobalConfig';
+import { GlobalProcessConfig, initialGlobalProcessConfig } from './config';
 import NormsTable from "./NormsTable";
 import { CreatedNorm } from './App';
 import { Link } from 'react-router-dom';
+import PropertyFilter, { Filter } from './PropertyFilter';
 
 // --- Constants and Type Definitions ---
 const NORM_TYPES = {
@@ -36,24 +38,22 @@ const NORM_TYPES = {
 type NormTypeValue = typeof NORM_TYPES[keyof typeof NORM_TYPES];
 
 interface CustomNodeData {
-  selected: any; label: string; type: string; name: string; icon?: string; isSource?: boolean; isTarget?: boolean;
+  selected: boolean; label: string; type: string; name: string; icon?: string; isSource?: boolean; isTarget?: boolean;
 }
 type AppNode = Node<CustomNodeData>;
 type AppEdge = Edge<{ label?: string }>;
+
+// CORRECTED: This is now a proper discriminated union
+type SelectedElement = (AppNode & { elementType: 'node' }) | (AppEdge & { elementType: 'edge' });
 
 interface GlobalNormDetails {
   norm_id: string; description: string; weight: number; threshold_seconds: string;
   aggregation_properties: string; avg_time_edge_label: string;
   entity_follows_edge_label: string; activity_frequency_edge_label: string; forbidden?: boolean;
   df_type_prop_name: string; df_type_prop_value: string;
-  // Fields for EventToEntityRelationshipNorm
   e2o_operator: 'exists' | 'not exists' | '==' | '!=' | '>' | '<' | '>=' | '<=';
   e2o_count: string;
-  // Fields for PropertyValueNorms
-  property_name: string;
-  property_data_type: 'string' | 'number';
-  property_operator: '==' | '!=' | '>' | '<' | '>=' | '<=' | 'in' | 'not in';
-  property_value: string;
+  filters: Filter[];
 }
 
 const initialGlobalNormDetails: GlobalNormDetails = {
@@ -61,7 +61,7 @@ const initialGlobalNormDetails: GlobalNormDetails = {
   aggregation_properties: '', avg_time_edge_label: 'DF', entity_follows_edge_label: 'DF_ENTITY',
   activity_frequency_edge_label: 'corr', df_type_prop_name: '', df_type_prop_value: '',
   e2o_operator: '>=', e2o_count: '1', forbidden: false,
-  property_name: '', property_data_type: 'string', property_operator: 'in', property_value: '',
+  filters: [],
 };
 
 const SINGLE_NODE_ID = 'single-node';
@@ -117,16 +117,16 @@ const getPredefinedNodesAndEdges = (
   const activityTypeLabel = globalConfig.eventNodeLabel || 'Activity';
   const entityTypeLabel = globalConfig.entityNodeLabel || 'Entity';
 
-  const sourceBaseData = { name: '', icon: '', label: '' };
-  const targetBaseData = { name: '', icon: '', label: '' };
-  const singleBaseData = { name: '', icon: '', label: '' };
+  const sourceBaseData = { name: '', icon: '', label: '', selected: false };
+  const targetBaseData = { name: '', icon: '', label: '', selected: false };
+  const singleBaseData = { name: '', icon: '', label: '', selected: false };
 
 
   switch (normType) {
     case NORM_TYPES.EVENT_PROPERTY_VALUE:
       predefinedNodes = [{
         id: SINGLE_NODE_ID, type: 'customNode',
-        data: { ...singleBaseData, type: activityTypeLabel, icon: '⚙️', label: `Target ${activityTypeLabel}`, selected: undefined },
+        data: { ...singleBaseData, type: activityTypeLabel, icon: '⚙️', label: `Target ${activityTypeLabel}` },
         position: { x: 200, y: 150 }, draggable: true
       }];
       break;
@@ -134,7 +134,7 @@ const getPredefinedNodesAndEdges = (
     case NORM_TYPES.ENTITY_PROPERTY_VALUE:
       predefinedNodes = [{
         id: SINGLE_NODE_ID, type: 'customNode',
-        data: { ...singleBaseData, type: entityTypeLabel, icon: '🧱', label: `Target ${entityTypeLabel}`, selected: undefined },
+        data: { ...singleBaseData, type: entityTypeLabel, icon: '🧱', label: `Target ${entityTypeLabel}` },
         position: { x: 200, y: 150 }, draggable: true
       }];
       break;
@@ -144,12 +144,12 @@ const getPredefinedNodesAndEdges = (
       predefinedNodes = [
         {
           id: SOURCE_NODE_ID, type: 'customNode', data: {
-            ...sourceBaseData, type: activityTypeLabel, icon: '⚙️', label: `${activityTypeLabel} A`, isSource: true, selected: undefined
+            ...sourceBaseData, type: activityTypeLabel, icon: '⚙️', label: `${activityTypeLabel} A`, isSource: true
           }, position: { x: 50, y: 150 }, draggable: true
         },
         {
           id: TARGET_NODE_ID, type: 'customNode', data: {
-            ...targetBaseData, type: activityTypeLabel, icon: '⚙️', label: `${activityTypeLabel} B`, isTarget: true, selected: undefined
+            ...targetBaseData, type: activityTypeLabel, icon: '⚙️', label: `${activityTypeLabel} B`, isTarget: true
           }, position: { x: 350, y: 150 }, draggable: true
         },
       ];
@@ -158,12 +158,12 @@ const getPredefinedNodesAndEdges = (
       predefinedNodes = [
         {
           id: SOURCE_NODE_ID, type: 'customNode', data: {
-            ...sourceBaseData, type: entityTypeLabel, icon: '🧱', label: `${entityTypeLabel} A`, isSource: true, selected: undefined
+            ...sourceBaseData, type: entityTypeLabel, icon: '🧱', label: `${entityTypeLabel} A`, isSource: true
           }, position: { x: 50, y: 150 }, draggable: true
         },
         {
           id: TARGET_NODE_ID, type: 'customNode', data: {
-            ...targetBaseData, type: entityTypeLabel, icon: '🧱', label: `${entityTypeLabel} B`, isTarget: true, selected: undefined
+            ...targetBaseData, type: entityTypeLabel, icon: '🧱', label: `${entityTypeLabel} B`, isTarget: true
           }, position: { x: 350, y: 150 }, draggable: true
         },
       ];
@@ -172,12 +172,12 @@ const getPredefinedNodesAndEdges = (
       predefinedNodes = [
         {
           id: SOURCE_NODE_ID, type: 'customNode', data: {
-            ...sourceBaseData, type: entityTypeLabel, icon: '🧱', label: `Context ${entityTypeLabel}`, isSource: true, selected: undefined
+            ...sourceBaseData, type: entityTypeLabel, icon: '🧱', label: `Context ${entityTypeLabel}`, isSource: true
           }, position: { x: 50, y: 150 }, draggable: true
         },
         {
           id: TARGET_NODE_ID, type: 'customNode', data: {
-            ...targetBaseData, type: activityTypeLabel, icon: '⚙️', label: `Target ${activityTypeLabel}`, isTarget: true, selected: undefined
+            ...targetBaseData, type: activityTypeLabel, icon: '⚙️', label: `Target ${activityTypeLabel}`, isTarget: true
           }, position: { x: 350, y: 150 }, draggable: true
         },
       ];
@@ -217,7 +217,7 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<CustomNodeData, AppEdge['data']> | null>(null);
   const [selectedNormType, setSelectedNormType] = useState<NormTypeValue>(NORM_TYPES.AVERAGE_TIME_BETWEEN_ACTIVITIES);
   const [currentGlobalNormDetails, setCurrentGlobalNormDetails] = useState<GlobalNormDetails>(initialGlobalNormDetails);
-  const [selectedElement, setSelectedElement] = useState<any>(null);
+  const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
   const [thresholdCondition, setThresholdCondition] = useState<'less than' | 'greater than'>('less than');
   const [analysisResults, setAnalysisResults] = useState<string>('');
   const [isAnalysisRunning, setIsAnalysisRunning] = useState<boolean>(false);
@@ -237,26 +237,58 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
     onEdgesChangeInternal(nonDeleteChanges);
   }, [onEdgesChangeInternal]);
 
+  // --- FIXED useEffect LOGIC ---
+
+  // HOOK 1: Responds to a change in norm type to update the form's state.
+  // It has no dependency on the state it sets, which prevents a loop.
   useEffect(() => {
-    const { nodes: newNodes, edges: newEdges } = getPredefinedNodesAndEdges(selectedNormType, currentGlobalNormDetails, globalProcessConfig);
-    setNodes(newNodes);
-    setEdges(newEdges);
-    setSelectedElement(null);
+    const isPropertyNorm = selectedNormType === NORM_TYPES.EVENT_PROPERTY_VALUE || selectedNormType === NORM_TYPES.ENTITY_PROPERTY_VALUE;
 
     setCurrentGlobalNormDetails(prev => ({
-      ...initialGlobalNormDetails, norm_id: prev.norm_id, description: prev.description, weight: prev.weight,
-      avg_time_edge_label: selectedNormType === NORM_TYPES.AVERAGE_TIME_BETWEEN_ACTIVITIES ? (prev.avg_time_edge_label || globalProcessConfig.dfBaseRelName) : initialGlobalNormDetails.avg_time_edge_label,
-      entity_follows_edge_label: selectedNormType === NORM_TYPES.ENTITY_FOLLOWS_ENTITY ? (prev.entity_follows_edge_label || globalProcessConfig.dfEntityRelName) : initialGlobalNormDetails.entity_follows_edge_label,
-      activity_frequency_edge_label: selectedNormType === NORM_TYPES.EVENT_TO_ENTITY_RELATIONSHIP ? (prev.activity_frequency_edge_label || globalProcessConfig.corrRelName) : initialGlobalNormDetails.activity_frequency_edge_label,
+      ...initialGlobalNormDetails,
+      // Preserve these user-entered fields across norm type changes
+      norm_id: prev.norm_id,
+      description: prev.description,
+      weight: prev.weight,
+      // Reset the filters based on the new norm type
+      filters: isPropertyNorm ? [{ property_name: '', property_data_type: 'string', property_operator: 'in', property_value: '' }] : [],
     }));
+
+    // Also, reset the node/edge selection in the graph
+    setSelectedElement(null);
+  }, [selectedNormType, globalProcessConfig]);
+
+
+  // HOOK 2: Responds to changes in the norm details (from Hook 1) or the graph instance.
+  // Its only job is to update the visual graph's nodes and edges.
+  useEffect(() => {
+    const { nodes: newNodes, edges: newEdges } = getPredefinedNodesAndEdges(selectedNormType, currentGlobalNormDetails, globalProcessConfig);
+
+    // We update the nodes and edges based on the template
+    setNodes(newNodes);
+    setEdges(newEdges);
 
     if (reactFlowInstance && newNodes.length > 0) {
       setTimeout(() => reactFlowInstance.fitView({ padding: 0.2, duration: 300 }), 0);
     }
-  }, [selectedNormType, globalProcessConfig, reactFlowInstance, setNodes, setEdges]);
-
+  }, [
+    selectedNormType,
+    globalProcessConfig,
+    // Only include the details that affect the edge labels from getPredefinedNodesAndEdges
+    currentGlobalNormDetails.avg_time_edge_label,
+    currentGlobalNormDetails.entity_follows_edge_label,
+    currentGlobalNormDetails.activity_frequency_edge_label,
+    currentGlobalNormDetails.df_type_prop_name,
+    // react-flow instance and setters
+    reactFlowInstance,
+    setNodes,
+    setEdges
+  ]);
+  // HOOK 3: Specifically styles the edge for the 'Directly Follows' norm.
+  // This is kept separate to keep logic clean.
   useEffect(() => {
     if (selectedNormType !== NORM_TYPES.ACTIVITY_DIRECTLY_FOLLOWS) return;
+
     setEdges((eds) =>
       eds.map((edge) => {
         if (edge.id === PREDEFINED_EDGE_ID) {
@@ -273,12 +305,18 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
         return edge;
       })
     );
-  }, [selectedNormType, currentGlobalNormDetails.forbidden, currentGlobalNormDetails.avg_time_edge_label, globalProcessConfig, setEdges,]);
+    // This hook now only depends on the specific properties it uses, not the whole object.
+  }, [selectedNormType, currentGlobalNormDetails.forbidden, currentGlobalNormDetails.avg_time_edge_label, globalProcessConfig, setEdges]);
+
 
   const onSelectionChange = useCallback(({ nodes: selNodes, edges: selEdges }: { nodes: AppNode[], edges: AppEdge[] }) => {
-    if (selNodes.length > 0) setSelectedElement({ ...selNodes[0], elementType: 'node' });
-    else if (selEdges.length > 0) setSelectedElement({ ...selEdges[0], elementType: 'edge' });
-    else setSelectedElement(null);
+    if (selNodes.length > 0) {
+      setSelectedElement({ ...selNodes[0], elementType: 'node' });
+    } else if (selEdges.length > 0) {
+      setSelectedElement({ ...selEdges[0], elementType: 'edge' });
+    } else {
+      setSelectedElement(null);
+    }
   }, []);
 
   const handleGlobalDetailChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -290,45 +328,74 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
     }));
   };
 
+  const handleFilterChange = (index: number, field: keyof Filter, value: string | number) => {
+    setCurrentGlobalNormDetails(prev => {
+      const newFilters = [...prev.filters];
+      newFilters[index] = { ...newFilters[index], [field]: value };
+      return { ...prev, filters: newFilters };
+    });
+  };
+
+  const addFilter = () => {
+    setCurrentGlobalNormDetails(prev => ({
+      ...prev,
+      filters: [...prev.filters, { property_name: '', property_data_type: 'string', property_operator: 'in', property_value: '' }]
+    }));
+  };
+
+  const removeFilter = (index: number) => {
+    setCurrentGlobalNormDetails(prev => ({
+      ...prev,
+      filters: prev.filters.filter((_, i) => i !== index)
+    }));
+  };
+
   const handleNodeDataChange = (nodeId: string, field: keyof CustomNodeData, value: string) => {
+    let latestData: CustomNodeData | undefined;
+
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
           const updatedData = { ...node.data, [field]: value };
           if (field === 'name') {
-            const nodeTypeLabel = node.data.type === (globalProcessConfig.eventNodeLabel || 'Activity') ? (globalProcessConfig.eventNodeLabel || 'Activity') : (globalProcessConfig.entityNodeLabel || 'Entity');
+            const nodeTypeLabel = node.data.type === (globalProcessConfig.eventNodeLabel || 'Activity')
+              ? (globalProcessConfig.eventNodeLabel || 'Activity')
+              : (globalProcessConfig.entityNodeLabel || 'Entity');
             updatedData.label = value || `Unnamed ${nodeTypeLabel}`;
           }
+          latestData = updatedData;
           return { ...node, data: updatedData };
         }
         return node;
       })
     );
-    if (selectedElement && selectedElement.elementType === 'node' && selectedElement.id === nodeId) {
-      setSelectedElement((prev: any) => {
-        if (!prev || prev.elementType !== 'node') return prev;
-        const updatedData = { ...prev.data, [field]: value };
-        if (field === 'name') {
-          const nodeTypeLabel = prev.data.type === (globalProcessConfig.eventNodeLabel || 'Activity') ? (globalProcessConfig.eventNodeLabel || 'Activity') : (globalProcessConfig.entityNodeLabel || 'Entity');
-          updatedData.label = value || `Unnamed ${nodeTypeLabel}`;
+
+    if (selectedElement && selectedElement.elementType === 'node' && selectedElement.id === nodeId && latestData) {
+      const finalData = latestData;
+      setSelectedElement((prev) => {
+        if (prev?.elementType !== 'node') {
+          return prev;
         }
-        return { ...prev, data: updatedData };
+        return {
+          ...prev,
+          data: finalData,
+        };
       });
     }
   };
 
   const validateNormDetails = (): boolean => {
-    const isTwoNodeNorm = [
-      NORM_TYPES.AVERAGE_TIME_BETWEEN_ACTIVITIES as string,
+    const isTwoNodeNorm = ([
+      NORM_TYPES.AVERAGE_TIME_BETWEEN_ACTIVITIES,
       NORM_TYPES.ENTITY_FOLLOWS_ENTITY,
       NORM_TYPES.EVENT_TO_ENTITY_RELATIONSHIP,
       NORM_TYPES.ACTIVITY_DIRECTLY_FOLLOWS
-    ].includes(selectedNormType);
+    ] as NormTypeValue[]).includes(selectedNormType);
 
-    const isOneNodeNorm = [
-      NORM_TYPES.EVENT_PROPERTY_VALUE as string,
+    const isPropertyNorm = ([
+      NORM_TYPES.EVENT_PROPERTY_VALUE,
       NORM_TYPES.ENTITY_PROPERTY_VALUE
-    ].includes(selectedNormType);
+    ] as NormTypeValue[]).includes(selectedNormType);
 
     if (isTwoNodeNorm) {
       const sourceNode = nodes.find(n => n.id === SOURCE_NODE_ID);
@@ -337,7 +404,6 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
         alert("Both source and target nodes in the graph must have a name. Select a node and set its name in the sidebar.");
         return false;
       }
-      // Make Threshold Seconds mandatory for AverageTimeBetweenActivitiesNorm
       if (selectedNormType === NORM_TYPES.AVERAGE_TIME_BETWEEN_ACTIVITIES) {
         if (!currentGlobalNormDetails.threshold_seconds || isNaN(Number(currentGlobalNormDetails.threshold_seconds))) {
           alert("Threshold Seconds is required and must be a valid number.");
@@ -346,17 +412,30 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
       }
     }
 
-    if (isOneNodeNorm) {
+    if (isPropertyNorm) {
       const singleNode = nodes.find(n => n.id === SINGLE_NODE_ID);
       if (!singleNode?.data?.name) {
         alert("The target node in the graph must have a name. Select the node and set its name in the sidebar.");
         return false;
       }
-      if (!currentGlobalNormDetails.property_name || !currentGlobalNormDetails.property_value) {
-        alert("Please specify the property name and the value to check against in the sidebar.");
+      if (currentGlobalNormDetails.filters.length === 0) {
+        alert("A property condition is required for this norm type.");
+        return false;
+      }
+      const mainFilter = currentGlobalNormDetails.filters[0];
+      if (!mainFilter.property_name || !mainFilter.property_value) {
+        alert("Please specify the property name and the value to check against in the main property condition.");
         return false;
       }
     }
+
+    for (const filter of currentGlobalNormDetails.filters) {
+      if (!filter.property_name || !filter.property_value) {
+        alert("All added filters must have a property name and a value.");
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -373,12 +452,15 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
     const entityLabel = globalProcessConfig.entityNodeLabel || "Entity";
 
     const description = currentGlobalNormDetails.description || (() => {
+      // ... (description generation logic is correct and does not need changes)
       switch (selectedNormType) {
-        case NORM_TYPES.AVERAGE_TIME_BETWEEN_ACTIVITIES:
+        case NORM_TYPES.AVERAGE_TIME_BETWEEN_ACTIVITIES: {
           return `Avg. time between ${activityLabel.toLowerCase()} "${sourceNode!.data.name}" and "${targetNode!.data.name}" should be ${thresholdCondition} ${currentGlobalNormDetails.threshold_seconds}s.`;
-        case NORM_TYPES.ENTITY_FOLLOWS_ENTITY:
+        }
+        case NORM_TYPES.ENTITY_FOLLOWS_ENTITY: {
           return `${entityLabel} "${sourceNode!.data.name}" should follow ${entityLabel.toLowerCase()} "${targetNode!.data.name}".`;
-        case NORM_TYPES.EVENT_TO_ENTITY_RELATIONSHIP:
+        }
+        case NORM_TYPES.EVENT_TO_ENTITY_RELATIONSHIP: {
           const relOp = currentGlobalNormDetails.e2o_operator;
           const relCount = currentGlobalNormDetails.e2o_count;
           let relDesc = '';
@@ -386,22 +468,29 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
           else if (relOp === 'not exists') relDesc = 'zero';
           else relDesc = `${relOp} ${relCount}`;
           return `${activityLabel} "${targetNode!.data.name}" should be related to ${entityLabel.toLowerCase()} "${sourceNode!.data.name}" ${relDesc} time(s).`;
-        case NORM_TYPES.ACTIVITY_DIRECTLY_FOLLOWS:
+        }
+        case NORM_TYPES.ACTIVITY_DIRECTLY_FOLLOWS: {
           return currentGlobalNormDetails.forbidden
             ? `It is forbidden for "${sourceNode!.data.name}" to be directly followed by "${targetNode!.data.name}".`
             : `"${sourceNode!.data.name}" should be directly followed by "${targetNode!.data.name}".`;
+        }
         case NORM_TYPES.EVENT_PROPERTY_VALUE:
-          return `${activityLabel} "${singleNode!.data.name}" must have property "${currentGlobalNormDetails.property_name}" ${currentGlobalNormDetails.property_operator} "${currentGlobalNormDetails.property_value}".`;
-        case NORM_TYPES.ENTITY_PROPERTY_VALUE:
-          return `${entityLabel} "${singleNode!.data.name}" must have property "${currentGlobalNormDetails.property_name}" ${currentGlobalNormDetails.property_operator} "${currentGlobalNormDetails.property_value}".`;
+        case NORM_TYPES.ENTITY_PROPERTY_VALUE: {
+          const mainFilter = currentGlobalNormDetails.filters[0];
+          const label = selectedNormType === NORM_TYPES.EVENT_PROPERTY_VALUE ? activityLabel : entityLabel;
+          // This coercion is safe for display purposes
+          return `${label} "${singleNode!.data.name}" must have property "${mainFilter.property_name}" ${mainFilter.property_operator} "${String(mainFilter.property_value)}".`;
+        }
         default: return "Custom norm description.";
       }
     })();
 
-    const newNorm: Partial<CreatedNorm> = {
+    const newNorm: Partial<CreatedNorm> & { attributeStorage: string } = {
+      enabled: true,
       norm_type: selectedNormType, norm_id: normId, description: description,
       weight: Number(currentGlobalNormDetails.weight) || 1.0,
       attributeStorage: globalProcessConfig.attributeStorage,
+      execution_filters: [],
     };
     const parseAggregationProps = (str: string): string[] => str ? str.split(',').map(s => s.trim()).filter(s => s) : [];
 
@@ -437,18 +526,45 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
         });
         break;
       case NORM_TYPES.EVENT_PROPERTY_VALUE:
-      case NORM_TYPES.ENTITY_PROPERTY_VALUE:
+      case NORM_TYPES.ENTITY_PROPERTY_VALUE: {
+        const mainFilter = currentGlobalNormDetails.filters[0];
+
+        // This helper function safely processes the filter value based on its type
+        const getFilterValue = (filter: Filter) => {
+          if (filter.property_data_type === 'number') {
+            return parseFloat(String(filter.property_value));
+          }
+          if (filter.property_data_type === 'datetime') {
+            if (filter.property_operator === 'between') {
+              return [filter.property_value, filter.property_value_end];
+            }
+            return filter.property_value;
+          }
+          // Default to string processing
+          if (filter.property_operator === 'in' || filter.property_operator === 'not in') {
+            return String(filter.property_value).split(',').map(s => s.trim());
+          }
+          return filter.property_value;
+        };
+
+        // This block now uses the safe helper function, fixing the error.
         Object.assign(newNorm, {
           target_name: singleNode!.data.name,
-          property_name: currentGlobalNormDetails.property_name,
-          operator: currentGlobalNormDetails.property_operator,
-          value: currentGlobalNormDetails.property_data_type === 'number'
-            ? parseFloat(currentGlobalNormDetails.property_value)
-            : currentGlobalNormDetails.property_value.split(',').map(s => s.trim()),
+          property_name: mainFilter.property_name,
+          operator: mainFilter.property_operator,
+          value: getFilterValue(mainFilter),
           aggregation_properties: parseAggregationProps(currentGlobalNormDetails.aggregation_properties),
         });
+
+        newNorm.execution_filters = currentGlobalNormDetails.filters.slice(1);
         break;
+      }
     }
+
+    if (newNorm.execution_filters!.length === 0 && !([NORM_TYPES.EVENT_PROPERTY_VALUE, NORM_TYPES.ENTITY_PROPERTY_VALUE] as NormTypeValue[]).includes(selectedNormType)) {
+      newNorm.execution_filters = currentGlobalNormDetails.filters;
+    }
+
     setCreatedNorms(prev => [...prev, newNorm as CreatedNorm]);
     alert("Norm added!");
   };
@@ -482,9 +598,13 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
 
       const data = await response.json();
       setAnalysisResults(data.results);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to run analysis:", error);
-      setAnalysisResults(`Error: ${error.message}`);
+      if (error instanceof Error) {
+        setAnalysisResults(`Error: ${error.message}`);
+      } else {
+        setAnalysisResults('An unknown error occurred.');
+      }
     } finally {
       setIsAnalysisRunning(false);
     }
@@ -521,6 +641,8 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
     window.addEventListener('mousemove', handleWindowMouseMove);
     window.addEventListener('mouseup', handleWindowMouseUp);
   }, [handleWindowMouseMove, handleWindowMouseUp]);
+
+  const isPropertyNorm = selectedNormType === NORM_TYPES.EVENT_PROPERTY_VALUE || selectedNormType === NORM_TYPES.ENTITY_PROPERTY_VALUE;
 
   return (
     <div className="graph-norm-creator-container flex flex-row h-screen w-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white">
@@ -593,45 +715,6 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
             </>
           )}
 
-          {(selectedNormType === NORM_TYPES.EVENT_PROPERTY_VALUE || selectedNormType === NORM_TYPES.ENTITY_PROPERTY_VALUE) && (
-            <div className="space-y-4 p-3 bg-gray-50 dark:bg-gray-750 rounded-lg border border-gray-200 dark:border-gray-600">
-              <h4 className="font-semibold text-md">Property Condition</h4>
-              <div><Label htmlFor="property_name">Property Name:</Label><Input id="property_name" type="text" name="property_name" value={currentGlobalNormDetails.property_name} onChange={handleGlobalDetailChange} placeholder="e.g., amount, status" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="property_data_type">Data Type:</Label>
-                  <select id="property_data_type" name="property_data_type" value={currentGlobalNormDetails.property_data_type} onChange={handleGlobalDetailChange} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm">
-                    <option value="string">String</option><option value="number">Number</option>
-                  </select>
-                </div>
-                <div>
-                  <Label htmlFor="property_operator">Operator:</Label>
-                  <select id="property_operator" name="property_operator" value={currentGlobalNormDetails.property_operator} onChange={handleGlobalDetailChange} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm">
-                    {currentGlobalNormDetails.property_data_type === 'string' ? (
-                      <>
-                        <option value="in">is one of</option>
-                        <option value="not in">is not one of</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="==">=</option><option value="!=">!=</option>
-                        <option value=">">&gt;</option><option value="<">&lt;</option>
-                        <option value=">=">≥</option><option value="<=">≤</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="property_value">
-                  Value(s)
-                  {currentGlobalNormDetails.property_data_type === 'string' && <span className="text-gray-500 text-xs"> (comma-separated for 'is one of')</span>}
-                </Label>
-                <Input id="property_value" type="text" name="property_value" value={currentGlobalNormDetails.property_value} onChange={handleGlobalDetailChange} placeholder={currentGlobalNormDetails.property_data_type === 'string' ? "e.g., Shipped,Delivered" : "e.g., 100"} />
-              </div>
-            </div>
-          )}
-
           {selectedNormType === NORM_TYPES.ACTIVITY_DIRECTLY_FOLLOWS && (
             <div>
               <Label htmlFor="adfTypeSelect">Constraint:</Label>
@@ -657,10 +740,28 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
         </div>
 
         <hr className="my-6 border-gray-200 dark:border-gray-700" />
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold mb-2">{isPropertyNorm ? 'Main Property Condition' : 'Filters'}</h3>
+          {currentGlobalNormDetails.filters.map((filter, index) => (
+            <PropertyFilter
+              key={index}
+              filter={filter}
+              index={index}
+              onChange={handleFilterChange}
+              onRemove={removeFilter}
+              isRemovable={!isPropertyNorm || index > 0}
+            />
+          ))}
+          <Button onClick={addFilter} variant="outline" className="w-full text-white">
+            + Add Filter
+          </Button>
+        </div>
+
+        <hr className="my-6 border-gray-200 dark:border-gray-700" />
         <h3 className="text-lg font-semibold mb-3">Selected Element Properties</h3>
-        {selectedElement && selectedElement.elementType === 'node' ? (
+        {selectedElement?.elementType === 'node' ? (
           <div className="properties-panel p-4 bg-gray-50 dark:bg-gray-750 rounded-md border border-gray-200 dark:border-gray-600">
-            <p className="text-sm mb-1"><b>Node Role:</b> {selectedElement.data.isSource ? 'Source / Left' : (selectedElement.data.isTarget ? 'Target / Right' : 'Target')}</p>
+            <p className="text-sm mb-1"><b>Node Role:</b> {'isSource' in selectedElement.data ? 'Source / Left' : ('isTarget' in selectedElement.data ? 'Target / Right' : 'Target')}</p>
             <p className="text-sm mb-3"><b>Type:</b> {selectedElement.data.type}</p>
             <Label htmlFor={`nodeNameInput-${selectedElement.id}`}><b>Name / Identifier (Value of '{selectedElement.data.type === (globalProcessConfig.eventNodeLabel || 'Activity') ? globalProcessConfig.activityProperty : globalProcessConfig.entityFilterProperty}') :</b></Label>
             <AutocompleteInput
