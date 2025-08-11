@@ -7,6 +7,7 @@ export interface Filter {
   property_operator: 'in' | 'not in' | '==' | '!=' | '>' | '<' | '>=' | '<=' | 'before' | 'after' | 'between';
   property_value: string | number;
   property_value_end?: string;
+  attributeStorage: 'property' | 'node';
 }
 
 interface PropertyFilterProps {
@@ -137,6 +138,13 @@ const PropertyFilter: React.FC<PropertyFilterProps> = ({ filter, index, onChange
             placeholder={filter.property_data_type === 'string' ? "e.g., Shipped,Delivered" : "e.g., 100"}
           />
         )}
+      </div>
+      <div>
+        <Label htmlFor={`attributeStorage_${index}`}>Attribute Storage:</Label>
+        <select id={`attributeStorage_${index}`} name="attributeStorage" value={filter.attributeStorage} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm">
+          <option value="property">As properties on the node</option>
+          <option value="node">As separate nodes</option>
+        </select>
       </div>
     </div>
   );

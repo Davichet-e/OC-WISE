@@ -128,18 +128,6 @@ const steps: ConfigStep[] = [
         description: 'Define the names of essential relationships connecting nodes in your process graph.',
         fields: ['corrRelName', 'dfEntityRelName'],
     },
-    {
-        id: 4,
-        title: 'Attribute Storage',
-        description: 'Specify if attributes are stored as properties on the node or as separate nodes connected by a relationship.',
-        fields: ['attributeStorage', 'attributeRelName', 'attributeNodeLabel', 'attributeNameProperty', 'attributeValueProperty'],
-    },
-    {
-        id: 5,
-        title: 'DF Relationship Type Distinction',
-        description: 'Specify how the type of DF relationship is distinguished: by edge label or by a property on the edge.',
-        fields: ['dfTypeDistinction', 'dfBaseRelName', 'dfTypePropertyName'],
-    },
 ];
 
 const fieldDetails: Record<keyof GlobalProcessConfig, { label: string; placeholder: string; tooltip: string }> = {
@@ -150,11 +138,6 @@ const fieldDetails: Record<keyof GlobalProcessConfig, { label: string; placehold
     timestampProperty: { label: 'Timestamp Property Name (on Events)', placeholder: 'e.g., timestamp, time:timestamp, endTime', tooltip: 'The property key on Event nodes that stores the occurrence time of the event.' },
     corrRelName: { label: 'Event-Entity Correlation Name', placeholder: 'e.g., CORR, OBSERVED_IN, BELONGS_TO', tooltip: 'The relationship type linking an event to an entity it involves or affects.' },
     dfEntityRelName: { label: 'Entity-Entity DF Relation Name', placeholder: 'e.g., DF_ENTITY, FOLLOWS_BY', tooltip: 'The relationship type indicating one entity directly follows another in the process flow (often derived).' },
-    attributeStorage: { label: 'Attribute Storage', placeholder: '', tooltip: 'Are event/entity attributes stored as properties on the node, or as separate nodes connected by a relationship?' },
-    attributeRelName: { label: 'Attribute Relationship Label', placeholder: 'e.g., HAS_ATTRIBUTE', tooltip: 'The relationship label connecting the main node to the attribute node.' },
-    attributeNodeLabel: { label: 'Attribute Node Label', placeholder: 'e.g., EntityAttribute', tooltip: 'The label of the node that contains the attribute.' },
-    attributeNameProperty: { label: 'Attribute Name Property', placeholder: 'e.g., name, attr_name', tooltip: 'The property on the attribute node that contains the attribute\'s name (e.g., "amount", "status").' },
-    attributeValueProperty: { label: 'Attribute Value Property', placeholder: 'e.g., value', tooltip: 'The property on the attribute node that contains the value.' },
     dfTypeDistinction: { label: 'DF Type Distinction', placeholder: '', tooltip: 'Choose how the type of DF relationship is distinguished: by edge label (e.g., DF_Order) or by a property on the edge.' },
     dfTypePropertyName: { label: 'DF Relationship Type Property Name', placeholder: 'e.g., EntityType, df_type, type', tooltip: 'If you use a property on the DF relationship to indicate its type (e.g., "OrderToShipment"), specify its property name here.' },
     dfBaseRelName: { label: 'Event-Event DF Relation Name', placeholder: 'e.g., DF, DIRECTLY_FOLLOWS', tooltip: 'The relationship type connecting an event to the next event in the same case/trace.' }
@@ -272,34 +255,6 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
                             {activeStep.fields.map(fieldName => {
                                 const details = fieldDetails[fieldName];
 
-                                if (fieldName === 'attributeStorage') {
-                                    return (
-                                        <div key={fieldName}>
-                                            <Label htmlFor={fieldName} className="flex items-center">
-                                                {details.label}
-                                                <Tooltip content={details.tooltip}><InfoIcon className="cursor-help" /></Tooltip>
-                                            </Label>
-                                            <select
-                                                id={fieldName} name={fieldName}
-                                                value={config.attributeStorage}
-                                                onChange={handleChange}
-                                                className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                            >
-                                                <option value="property">As properties on the node</option>
-                                                <option value="node">As separate nodes connected by a relationship</option>
-                                            </select>
-                                        </div>
-                                    );
-                                }
-
-                                if (
-                                    (fieldName === 'attributeRelName' || fieldName === 'attributeNodeLabel' ||
-                                        fieldName === 'attributeNameProperty' || fieldName === 'attributeValueProperty') &&
-                                    config.attributeStorage !== 'node'
-                                ) {
-                                    return null;
-                                }
-
                                 if (fieldName === 'dfTypeDistinction') {
                                     return (
                                         <div key={fieldName}>
@@ -344,7 +299,6 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
                                         if (!fieldConf) return null; // Skip fields not in details
                                         // Conditional rendering logic based on dependencies
                                         if (key === 'dfTypePropertyName' && config.dfTypeDistinction !== 'property') return null;
-                                        if (['attributeRelName', 'attributeNodeLabel', 'attributeNameProperty', 'attributeValueProperty'].includes(key) && config.attributeStorage !== 'node') return null;
                                         return (
                                             <li key={key} className="flex justify-between">
                                                 <span className="font-semibold">{fieldConf.label}:</span>

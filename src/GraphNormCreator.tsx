@@ -48,7 +48,8 @@ type SelectedElement = (AppNode & { elementType: 'node' }) | (AppEdge & { elemen
 
 interface GlobalNormDetails {
   norm_id: string; description: string; weight: number; threshold_seconds: string;
-  aggregation_properties: string; avg_time_edge_label: string;
+  aggregation_properties: { name: string, attributeStorage: 'property' | 'node' }[];
+  avg_time_edge_label: string;
   entity_follows_edge_label: string; activity_frequency_edge_label: string; forbidden?: boolean;
   df_type_prop_name: string; df_type_prop_value: string;
   e2o_operator: 'exists' | 'not exists' | '==' | '!=' | '>' | '<' | '>=' | '<=';
@@ -58,7 +59,7 @@ interface GlobalNormDetails {
 
 const initialGlobalNormDetails: GlobalNormDetails = {
   norm_id: '', description: '', weight: 1.0, threshold_seconds: '',
-  aggregation_properties: '', avg_time_edge_label: 'DF', entity_follows_edge_label: 'DF_ENTITY',
+  aggregation_properties: [], avg_time_edge_label: 'DF', entity_follows_edge_label: 'DF_ENTITY',
   activity_frequency_edge_label: 'corr', df_type_prop_name: '', df_type_prop_value: '',
   e2o_operator: '>=', e2o_count: '1', forbidden: false,
   filters: [],
@@ -251,7 +252,7 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
       description: prev.description,
       weight: prev.weight,
       // Reset the filters based on the new norm type
-      filters: isPropertyNorm ? [{ property_name: '', property_data_type: 'string', property_operator: 'in', property_value: '' }] : [],
+      filters: isPropertyNorm ? [{ property_name: '', property_data_type: 'string', property_operator: 'in', property_value: '', attributeStorage: 'property' }] : [],
     }));
 
     // Also, reset the node/edge selection in the graph
@@ -339,7 +340,7 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
   const addFilter = () => {
     setCurrentGlobalNormDetails(prev => ({
       ...prev,
-      filters: [...prev.filters, { property_name: '', property_data_type: 'string', property_operator: 'in', property_value: '' }]
+      filters: [...prev.filters, { property_name: '', property_data_type: 'string', property_operator: 'in', property_value: '', attributeStorage: 'property' }]
     }));
   };
 
@@ -485,14 +486,15 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
       }
     })();
 
-    const newNorm: Partial<CreatedNorm> & { attributeStorage: string } = {
+    const newNorm: Partial<CreatedNorm> = {
       enabled: true,
       norm_type: selectedNormType, norm_id: normId, description: description,
       weight: Number(currentGlobalNormDetails.weight) || 1.0,
-      attributeStorage: globalProcessConfig.attributeStorage,
       execution_filters: [],
     };
-    const parseAggregationProps = (str: string): string[] => str ? str.split(',').map(s => s.trim()).filter(s => s) : [];
+    const parseAggregationProps = (props: { name: string, attributeStorage: 'property' | 'node' }[]): { name: string, attributeStorage: 'property' | 'node' }[] => {
+      return props.map(p => ({ name: p.name.trim(), attributeStorage: p.attributeStorage })).filter(p => p.name);
+    };
 
     switch (selectedNormType) {
       case NORM_TYPES.AVERAGE_TIME_BETWEEN_ACTIVITIES:
@@ -735,7 +737,47 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
                 <InfoIcon className="cursor-help" />
               </Tooltip>
             </Label>
-            <Input id="aggPropsInput" type="text" name="aggregation_properties" value={currentGlobalNormDetails.aggregation_properties} onChange={handleGlobalDetailChange} placeholder="e.g., supplier, region" />
+            {currentGlobalNormDetails.aggregation_properties.map((prop, index) => (
+              <div key={index} className="flex items-center space-x-2 mt-2">
+                <Input
+                  type="text"
+                  placeholder="Property Name"
+                  value={prop.name}
+                  onChange={(e) => {
+                    const newAggProps = [...currentGlobalNormDetails.aggregation_properties];
+                    newAggProps[index].name = e.target.value;
+                    setCurrentGlobalNormDetails(prev => ({ ...prev, aggregation_properties: newAggProps }));
+                  }}
+                />
+                <select
+                  value={prop.attributeStorage}
+                  onChange={(e) => {
+                    const newAggProps = [...currentGlobalNormDetails.aggregation_properties];
+                    newAggProps[index].attributeStorage = e.target.value as 'property' | 'node';
+                    setCurrentGlobalNormDetails(prev => ({ ...prev, aggregation_properties: newAggProps }));
+                  }}
+                  className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm"
+                >
+                  <option value="property">Property</option>
+                  <option value="node">Node</option>
+                </select>
+                <Button onClick={() => {
+                  const newAggProps = [...currentGlobalNormDetails.aggregation_properties];
+                  newAggProps.splice(index, 1);
+                  setCurrentGlobalNormDetails(prev => ({ ...prev, aggregation_properties: newAggProps }));
+                }} variant="outline" className="text-white">
+                  -
+                </Button>
+              </div>
+            ))}
+            <Button onClick={() => {
+              setCurrentGlobalNormDetails(prev => ({
+                ...prev,
+                aggregation_properties: [...prev.aggregation_properties, { name: '', attributeStorage: 'property' }]
+              }));
+            }} variant="outline" className="w-full mt-2 text-white">
+              + Add Aggregation Property
+            </Button>
           </div>
         </div>
 

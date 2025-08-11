@@ -11,14 +11,6 @@ export interface GlobalProcessConfig {
     corrRelName: string;
     dfEntityRelName: string;
 
-    // Attribute Storage
-    attributeStorage: 'property' | 'node';
-    // Only if attributeStorage === 'node'
-    attributeRelName?: string;
-    attributeNodeLabel?: string;
-    attributeNameProperty?: string;
-    attributeValueProperty?: string;
-
     // How is the DF type distinguished?
     dfTypeDistinction: 'label' | 'property';
 
@@ -35,11 +27,20 @@ export const initialGlobalProcessConfig: GlobalProcessConfig = {
     dfBaseRelName: 'DF',
     corrRelName: 'CORR',
     dfEntityRelName: 'DF_ENTITY',
-    attributeStorage: 'property',
-    attributeRelName: 'HAS_ATTRIBUTE',
-    attributeNodeLabel: 'Attribute',
-    attributeNameProperty: 'name',
-    attributeValueProperty: 'value',
     dfTypeDistinction: 'label',
     dfTypePropertyName: undefined,
+};
+
+
+// Example of a more specific config for a known dataset
+export const bpic2017Config: GlobalProcessConfig = {
+    eventNodeLabel: 'Event',
+    entityNodeLabel: 'Application',
+    activityProperty: 'concept:name',
+    entityFilterProperty: 'type', // Assuming 'Application' nodes have a 'type' property if needed
+    timestampProperty: 'time:timestamp',
+    dfBaseRelName: 'DF_APPLICATION',
+    corrRelName: 'CORR',
+    dfEntityRelName: 'DF_ENTITY', // This might not be applicable or needs to be defined
+    dfTypeDistinction: 'label',
 };

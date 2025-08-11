@@ -30,12 +30,6 @@ CONFIG = {
     "neo4j_uri": os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
     "neo4j_user": os.environ.get("NEO4J_USER", "neo4j"),
     "neo4j_password": os.environ.get("NEO4J_PASSWORD", "12345678"),
-    # --- New Attribute Storage Configuration ---
-    "attributeStorage": "property",  # Can be 'property' or 'node'
-    "attributeNodeLabel": "Attribute",
-    "attribute_rel_name": "HAS_ATTRIBUTE",
-    "attribute_name_property": "name",
-    "attribute_value_property": "value",
     "analysis_run_node_label": "AnalysisRun",
     "generated_in_rel_name": "GENERATED_IN",
 }
@@ -231,15 +225,15 @@ class ProcessNorm(ABC):
             return "", {}
 
         config = getattr(self, "config", CONFIG)  # fallback to global CONFIG if not set
-        attribute_storage = config.get("attributeStorage", "property")
         all_clauses = []
         all_params = {}
+        match_clauses = []
 
         for i, f in enumerate(filters):
+            attribute_storage = f.get("attributeStorage", "property")
             prop_name = f['property_name']
             operator = f['property_operator']
             value = f['property_value']
-            data_type = f.get('property_data_type', 'string')
             param_prefix = f"exec_filter_{i}"
 
             if attribute_storage == 'node':
@@ -251,14 +245,13 @@ class ProcessNorm(ABC):
                 attr_alias = f"attr_{i}"
 
                 # Build MATCH for attribute node (strict filtering)
-                match_clause = f"MATCH ({node_alias})-[:`{attr_rel}`]->({attr_alias}:`{attr_label}` {{ `{attr_name_prop}`: '{prop_name}' }})"
+                match_clauses.append(f"MATCH ({node_alias})-[:`{attr_rel}`]->({attr_alias}:`{attr_label}` {{ `{attr_name_prop}`: '{prop_name}' }})")
                 op_map = {"==": "=", "!=": "<>", ">": ">", "<": "<", ">=": ">=", "<=": "<=", "in": "IN", "not in": "NOT IN"}
                 cypher_op = op_map.get(operator)
                 if cypher_op:
                     param_name = param_prefix
                     all_params[param_name] = value
                     filter_expr = f"({attr_alias}.`{attr_value_prop}` IS NOT NULL AND {attr_alias}.`{attr_value_prop}` {cypher_op} ${param_name})"
-                    all_clauses.append(match_clause)
                     all_clauses.append(filter_expr)
             else:
                 # Attribute stored as property
@@ -270,22 +263,21 @@ class ProcessNorm(ABC):
         if not all_clauses:
             return "", {}
 
-        if attribute_storage == 'node':
-            # Split MATCH and WHERE
-            match_clauses = [c for c in all_clauses if c.startswith("MATCH")]
-            where_clauses = [c for c in all_clauses if not c.startswith("MATCH")]
-            match_str = "\n".join(match_clauses)
-            where_str = " AND ".join(where_clauses)
-            clause_str = f"{match_str}\nWHERE {where_str}" if where_str else match_str
-            return clause_str, all_params
+        match_str = "\n".join(match_clauses)
+        where_str = " AND ".join(all_clauses)
+        
+        if match_str and where_str:
+            return f"{match_str}\nWHERE {where_str}", all_params
+        elif match_str:
+            return match_str, all_params
         else:
-            return f"WHERE {' AND '.join(all_clauses)}", all_params
+            return f"WHERE {where_str}", all_params
 
     def _generate_aggregation_query_template(
             self,
             config: Dict[str, Any],
             match_clause: str,
-            grouping_properties: List[str],
+            grouping_properties: List[Dict[str, Any]],
             grouping_entity_alias: str,
             aggregation_expressions: List[str]
     ) -> str:
@@ -294,45 +286,37 @@ class ProcessNorm(ABC):
             return f"""
             {match_clause}
             RETURN 'Overall' as grouping_key,
-                   {',\n                   '.join(aggregation_expressions)}
+                   {','.join(aggregation_expressions)}
             """
 
-        attribute_storage = config.get("attributeStorage", "property")
+        match_clauses = []
+        grouping_key_parts = []
 
-        if attribute_storage == 'node':
-            attr_rel = config.get("attribute_rel_name", "HAS_ATTRIBUTE")
-            attr_label = config.get("attributeNodeLabel", "Attribute")
-            attr_name_prop = config.get("attribute_name_property", "name")
-            attr_value_prop = config.get("attribute_value_property", "value")
-
-            match_clauses = []
-            grouping_key_parts = []
-
-            for i, prop in enumerate(grouping_properties):
+        for i, prop_info in enumerate(grouping_properties):
+            prop_name = prop_info['name']
+            attribute_storage = prop_info.get('attributeStorage', 'property')
+            
+            if attribute_storage == 'node':
+                attr_rel = config.get("attribute_rel_name", "HAS_ATTRIBUTE")
+                attr_label = config.get("attributeNodeLabel", "Attribute")
+                attr_name_prop = config.get("attribute_name_property", "name")
+                attr_value_prop = config.get("attribute_value_property", "value")
                 alias = f"attr_{i}"
                 match_clauses.append(
-                    f"OPTIONAL MATCH ({grouping_entity_alias})-[:`{attr_rel}`]->({alias}:`{attr_label}` {{ `{attr_name_prop}`: '{prop}' }})")
+                    f"OPTIONAL MATCH ({grouping_entity_alias})-[:`{attr_rel}`]->({alias}:`{attr_label}` {{ `{attr_name_prop}`: '{prop_name}' }})")
                 grouping_key_parts.append(f"coalesce(toString({alias}.`{attr_value_prop}`), 'N/A')")
+            else: # 'property'
+                grouping_key_parts.append(f"coalesce(toString({grouping_entity_alias}.`{prop_name}`), 'N/A')")
 
-            additional_matches = "\n        ".join(match_clauses)
-            grouping_key_str = f"[{', '.join(grouping_key_parts)}]"
+        additional_matches = "\n        ".join(match_clauses)
+        grouping_key_str = f"[{', '.join(grouping_key_parts)}]"
 
-            query = f"""
-            {match_clause}
-            {additional_matches}
-            RETURN {grouping_key_str} as grouping_key,
-                   {',\n                   '.join(aggregation_expressions)}
-            """
-        else:  # 'property' strategy
-            grouping_key_parts = [f"coalesce(toString({grouping_entity_alias}.`{prop}`), 'N/A')" for prop in
-                                  grouping_properties]
-            grouping_key_str = f"[{', '.join(grouping_key_parts)}]"
-
-            query = f"""
-            {match_clause}
-            RETURN {grouping_key_str} as grouping_key,
-                   {',\n                   '.join(aggregation_expressions)}
-            """
+        query = f"""
+        {match_clause}
+        {additional_matches}
+        RETURN {grouping_key_str} as grouping_key,
+               {','.join(aggregation_expressions)}
+        """
         return query
 
     def run_analysis(self, driver: Optional[Driver], config: Dict[str, Any], params: Dict[str, Any]) -> Optional[str]:
@@ -556,7 +540,7 @@ class PropertyValueNorm(ProcessNorm):
         where_clause = f"{filter_conditions}" if filter_conditions else ""
 
         # --- Step 3: Combine original behavior with added filters ---
-        attribute_storage = config.get("attributeStorage", "property")
+        attribute_storage = params.get("attributeStorage", "property")
         match_clause = self.get_node_match(config, params)
         
         # This is the original logic you provided, now with the `where_clause` added
@@ -590,6 +574,8 @@ class PropertyValueNorm(ProcessNorm):
         MERGE (diag)-[:`{config['generated_in_rel_name']}`]->(run)
         """
         print(query)
+
+        print(value)
 
         # Combine parameters from the main check and the added filters
         query_params = {
@@ -655,8 +641,9 @@ def parse_and_run_norms(driver: Optional[Driver], config: Dict[str, Any], data: 
                 weight=norm_data.get("weight", 1.0)
             )
             norm_params = {**norm_data, "run_id": run_id}
-            print("Test")
-            print(norm_params)
+            if norm_type in ["EventPropertyValueNorm", "EntityPropertyValueNorm"]:
+                if "filters" in norm_data and norm_data["filters"]:
+                    norm_params["attributeStorage"] = norm_data["filters"][0].get("attributeStorage", "property")
             report = norm.run_analysis(driver, config, norm_params)
             if report:
                 reports.append(report)
