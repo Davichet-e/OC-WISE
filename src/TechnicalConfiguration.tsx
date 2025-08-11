@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useGlobalConfig } from './GlobalConfig';
 import { GlobalProcessConfig } from './config';
+import { useLocation } from 'react-router-dom';
 
 // Helper components (mimicking shadcn/ui with Tailwind)
 
@@ -146,7 +147,7 @@ const fieldDetails: Record<keyof GlobalProcessConfig, { label: string; placehold
 
 interface TechnicalConfiguratorProps {
     currentConfig: GlobalProcessConfig;
-    onConfigSave: (newConfig: GlobalProcessConfig) => void;
+    onConfigSave: (newConfig: GlobalProcessConfig, returnTo?: string) => void;
     onCancel?: () => void;
 }
 
@@ -156,15 +157,13 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
     const { setAutocompleteData } = useGlobalConfig();
     const [error, setError] = useState<string | null>(null);
 
+    // 3. GET the location and the return path
+    const location = useLocation();
+    const returnTo = location.state?.from;
+
     useEffect(() => {
         setConfig(currentConfig);
     }, [currentConfig]);
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-        const targetValue = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
-        setConfig(prev => ({ ...prev, [name]: targetValue }));
-    };
 
     const handleNext = async () => {
         setError(null);
@@ -204,12 +203,19 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
                     entityTypes: entityTypesData.types || [],
                     activityTypes: activityTypesData.types || [],
                 });
-                onConfigSave(config);
+                // 4. PASS the return path when saving
+                onConfigSave(config, returnTo);
             } catch (error) {
                 console.error("Failed to fetch autocomplete data:", error);
                 setError(error instanceof Error ? error.message : "An unknown error occurred. Check the console and backend for details.");
             }
         }
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value, type } = e.target;
+        const targetValue = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+        setConfig(prev => ({ ...prev, [name]: targetValue }));
     };
 
     const handleBack = () => {

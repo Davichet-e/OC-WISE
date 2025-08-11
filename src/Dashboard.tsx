@@ -91,8 +91,8 @@ const Header: React.FC = () => {
                 <h1 className="text-4xl font-bold tracking-tight text-white">Health Dashboard</h1>
                 <p className="mt-2 text-slate-400">As of {formattedDate}</p>
             </div>
-            <Link to="/norms-editor" className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
-                Go to Norms Editor
+            <Link to="/definitions" className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+                Manage Definitions
             </Link>
         </motion.header>
     );

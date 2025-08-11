@@ -207,12 +207,19 @@ interface GraphNormCreatorInternalProps {
   setCreatedNorms: React.Dispatch<React.SetStateAction<CreatedNorm[]>>;
   onDeleteNorm: (normId: string) => void;
   onToggleNorm: (normId: string) => void;
+  isEmbedded?: boolean;
 }
 
 const MIN_PANEL_WIDTH = 320;
 const MAX_PANEL_WIDTH = 900;
 
-const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ globalProcessConfig, onBackToTechConfig, createdNorms, setCreatedNorms, onDeleteNorm, onToggleNorm }) => {
+const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
+  globalProcessConfig,
+  createdNorms,
+  setCreatedNorms,
+  onDeleteNorm,
+  onToggleNorm
+}) => {
   const [nodes, setNodes, onNodesChangeInternal] = useNodesState<CustomNodeData>([]);
   const [edges, setEdges, onEdgesChangeInternal] = useEdgesState<AppEdge['data']>([]);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<CustomNodeData, AppEdge['data']> | null>(null);
@@ -653,14 +660,16 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
       <div className="sidebar w-[380px] min-w-[350px] p-5 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-y-auto shadow-lg">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-semibold">Norm Configuration</h2>
+          (
           <div className="flex space-x-2">
             <Link to="/" className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded text-xs">
               Back to Dashboard
             </Link>
-            <Button onClick={onBackToTechConfig} variant="default" className="text-xs bg-gray-500 hover:bg-gray-600 text-white">
+            <Link to="/configure" state={{ from: '/definitions' }} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded text-xs">
               Edit Tech Config
-            </Button>
+            </Link>
           </div>
+          )
         </div>
         <div className="mb-4">
           <Label htmlFor="normTypeSelect">Norm Type:</Label>
@@ -783,17 +792,35 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
           </div>
         </div>
 
+        {isPropertyNorm && (
+          <>
+            <hr className="my-6 border-gray-200 dark:border-gray-700" />
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold mb-2">Main Property Condition</h3>
+              {currentGlobalNormDetails.filters.slice(0, 1).map((filter, index) => (
+                <PropertyFilter
+                  key={index}
+                  filter={filter}
+                  index={index}
+                  onChange={handleFilterChange}
+                  onRemove={removeFilter}
+                  isRemovable={index > 0}
+                />
+              ))}
+            </div>
+          </>
+        )}
         <hr className="my-6 border-gray-200 dark:border-gray-700" />
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold mb-2">{isPropertyNorm ? 'Main Property Condition' : 'Filters'}</h3>
-          {currentGlobalNormDetails.filters.map((filter, index) => (
+          <h3 className="text-lg font-semibold mb-2">Filters</h3>
+          {currentGlobalNormDetails.filters.slice(1).map((filter, index) => (
             <PropertyFilter
               key={index}
               filter={filter}
               index={index}
               onChange={handleFilterChange}
               onRemove={removeFilter}
-              isRemovable={!isPropertyNorm || index > 0}
+              isRemovable={true}
             />
           ))}
           <Button onClick={addFilter} variant="outline" className="w-full text-white">

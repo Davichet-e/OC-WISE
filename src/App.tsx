@@ -1,14 +1,11 @@
-import React, { useState } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
-import { ReactFlowProvider } from 'reactflow';
+import React from 'react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import 'reactflow/dist/style.css';
 import './App.css';
 import TechnicalConfigurator from './TechnicalConfiguration';
 import { useGlobalConfig } from './GlobalConfig';
-import GraphNormCreatorInternal from './GraphNormCreator';
 import Dashboard from './Dashboard';
-
-import { Filter } from './PropertyFilter';
+import ProcessDefinitions from './ProcessDefinitions';
 import { GlobalProcessConfig } from './config';
 
 export interface CreatedNorm {
@@ -17,62 +14,37 @@ export interface CreatedNorm {
   description: string;
   weight?: number;
   enabled: boolean;
-  execution_filters?: Filter[];
+  execution_filters?: any[]; // Simplified for this context
+  [key: string]: any; // Allow other properties
 }
 
 const App: React.FC = () => {
   const { config, setConfig, isConfigSet, setIsConfigSet } = useGlobalConfig();
-  const [createdNorms, setCreatedNorms] = useState<CreatedNorm[]>([]);
   const navigate = useNavigate();
+  const location = useLocation(); // 2. GET location to make cancel smarter
 
-  const handleConfigSave = (newConfig: GlobalProcessConfig) => {
+  // 3. UPDATE handleConfigSave to accept the return path
+  const handleConfigSave = (newConfig: GlobalProcessConfig, returnTo?: string) => {
     setConfig(newConfig);
     setIsConfigSet(true);
-    navigate('/norms-editor');
-  };
-
-  const handleBackToTechConfig = () => {
-    setIsConfigSet(false);
-    navigate('/configure');
-  };
-
-  const handleDeleteNorm = (normId: string) => {
-    setCreatedNorms(prev => prev.filter(n => n.norm_id !== normId));
-  };
-
-  const handleToggleNorm = (normId: string) => {
-    setCreatedNorms(prev => prev.map(n => n.norm_id === normId ? { ...n, enabled: !n.enabled } : n));
+    navigate(returnTo || '/definitions'); // Navigate back or to default
   };
 
   return (
     <Routes>
-      <Route path="/" element={<Dashboard createdNorms={createdNorms} config={config} />} />
-      <Route path="/configure" element={
-        <TechnicalConfigurator
-          currentConfig={config}
-          onConfigSave={handleConfigSave}
-          onCancel={isConfigSet ? () => navigate('/norms-editor') : undefined}
-        />
-      } />
-      <Route path="/norms-editor" element={
-        isConfigSet ? (
-          <ReactFlowProvider>
-            <GraphNormCreatorInternal
-              globalProcessConfig={config}
-              onBackToTechConfig={handleBackToTechConfig}
-              createdNorms={createdNorms}
-              setCreatedNorms={setCreatedNorms}
-              onDeleteNorm={handleDeleteNorm}
-              onToggleNorm={handleToggleNorm}
-            />
-          </ReactFlowProvider>
-        ) : (
+      <Route path="/" element={<Dashboard />} />
+      <Route path="/definitions" element={<ProcessDefinitions />} />
+      <Route
+        path="/configure"
+        element={
           <TechnicalConfigurator
             currentConfig={config}
             onConfigSave={handleConfigSave}
+            // 4. UPDATE onCancel to use the location state for more flexible navigation
+            onCancel={isConfigSet ? () => navigate(location.state?.from || '/definitions') : undefined}
           />
-        )
-      } />
+        }
+      />
     </Routes>
   );
 };

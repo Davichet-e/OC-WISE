@@ -39,6 +39,8 @@ CONFIG = {
     "aggregation_property_node_label": "AggregationProperty",
     "defines_aggregation_by_rel_name": "DEFINES_AGGREGATION_BY",
     "aggregated_by_rel_name": "AGGREGATED_BY",
+    "process_definition_node_label": "ProcessDefinition",
+    "contains_norm_rel_name": "CONTAINS_NORM",
 }
 
 # --- Pydantic Models ---
@@ -48,6 +50,18 @@ class NormRequest(BaseModel):
     norms: List[Dict[str, Any]]
     run_type: Optional[str] = "ad-hoc"
     schedule: Optional[str] = None
+
+class ProcessDefinitionBase(BaseModel):
+    name: str
+    schedule: str = "weekly"
+
+class ProcessDefinitionCreate(ProcessDefinitionBase):
+    norms: List[Dict[str, Any]]
+
+class ProcessDefinition(ProcessDefinitionBase):
+    definition_id: str
+    norms: List[Dict[str, Any]]
+
 
 # --- FastAPI Setup ---
 app = FastAPI()
@@ -242,7 +256,7 @@ class ProcessNorm(ABC):
             attribute_storage = f.get("attributeStorage", "property")
             prop_name = f['property_name']
             operator = f['property_operator']
-            value = f['property_value']
+            value = f['property_value'].split(",")
             param_prefix = f"exec_filter_{i}"
 
             if attribute_storage == 'node':
@@ -834,7 +848,165 @@ def persist_norms(driver: Driver, norms: List[Dict[str, Any]], run_id: str):
 
     print(f"Persisted {len(norms)} norms and their configurations for run {run_id}.")
 
+    print(f"Persisted {len(norms)} norms and their configurations for run {run_id}.")
+
+
+# --- NEW Process Definition Logic ---
+
+def create_process_definition(driver: Driver, definition_data: ProcessDefinitionCreate) -> Dict:
+    definition_id = str(uuid.uuid4())
+    
+    # Create the ProcessDefinition node
+    pd_label = CONFIG['process_definition_node_label']
+    query = f"CREATE (pd:{pd_label} {{definition_id: $def_id, name: $name, schedule: $schedule}}) RETURN pd"
+    execute_query(driver, query, {"def_id": definition_id, "name": definition_data.name, "schedule": definition_data.schedule})
+
+    # Create and link the ProcessNorm nodes
+    norm_label = CONFIG['process_norm_node_label']
+    contains_rel = CONFIG['contains_norm_rel_name']
+    agg_prop_label = CONFIG['aggregation_property_node_label']
+    agg_rel_name = CONFIG['defines_aggregation_by_rel_name']
+
+    for norm_data in definition_data.norms:
+        norm_id = norm_data.get("norm_id")
+        if not norm_id: continue
+        
+        properties = norm_data.copy()
+        aggregation_properties = properties.pop("aggregation_properties", [])
+
+        norm_query = f"""
+        MATCH (pd:{pd_label} {{definition_id: $def_id}})
+        CREATE (pn:{norm_label} {{norm_id: $norm_id}})
+        SET pn = $properties
+        MERGE (pd)-[:`{contains_rel}`]->(pn)
+        """
+        execute_query(driver, norm_query, {"def_id": definition_id, "norm_id": norm_id, "properties": properties})
+
+        if aggregation_properties:
+            agg_query = f"""
+            MATCH (pn:{norm_label} {{norm_id: $norm_id}})
+            UNWIND $agg_props as agg_prop
+            CREATE (ap:{agg_prop_label} {{name: agg_prop.name, attributeStorage: agg_prop.attributeStorage}})
+            MERGE (pn)-[:`{agg_rel_name}`]->(ap)
+            """
+            execute_query(driver, agg_query, {"norm_id": norm_id, "agg_props": aggregation_properties})
+
+    return {"definition_id": definition_id, **definition_data.model_dump()}
+
+
+def get_process_definition(driver: Driver, definition_id: str) -> Optional[Dict]:
+    pd_label = CONFIG['process_definition_node_label']
+    norm_label = CONFIG['process_norm_node_label']
+    contains_rel = CONFIG['contains_norm_rel_name']
+
+    query = f"""
+    MATCH (pd:{pd_label} {{definition_id: $def_id}})-[:`{contains_rel}`]->(pn:{norm_label})
+    RETURN pd, collect(pn) as norms
+    """
+    result = execute_query(driver, query, {"def_id": definition_id})
+    
+    if not result:
+        return None
+
+    pd_data = result[0]['pd']
+    norms_data = [dict(norm) for norm in result[0]['norms']]
+    
+    return {**pd_data, "norms": norms_data}
+
+
+def run_definition(driver: Driver, definition_id: str, run_type: str) -> str:
+    definition = get_process_definition(driver, definition_id)
+    if not definition:
+        raise HTTPException(status_code=404, detail="Process Definition not found.")
+
+    # The definition serves as a template for the NormRequest
+    request_data = NormRequest(
+        config={}, # Using global config for now
+        norms=definition['norms'],
+        run_type=run_type,
+        schedule=definition.get('schedule') if run_type == 'scheduled' else None
+    )
+    
+    return run_analysis_from_request(request_data)
+
+
+def get_all_process_definitions(driver: Driver) -> List[Dict]:
+    pd_label = CONFIG['process_definition_node_label']
+    query = f"MATCH (pd:{pd_label}) RETURN pd.definition_id as definition_id, pd.name as name, pd.schedule as schedule"
+    results = execute_query(driver, query)
+    return results if results else []
+
+
+def update_process_definition(driver: Driver, definition_id: str, definition_data: ProcessDefinitionCreate) -> Dict:
+    pd_label = CONFIG['process_definition_node_label']
+    norm_label = CONFIG['process_norm_node_label']
+    contains_rel = CONFIG['contains_norm_rel_name']
+    
+    # First, delete old norms and their aggregation properties associated with the definition
+    delete_query = f"""
+    MATCH (pd:{pd_label} {{definition_id: $def_id}})-[:{contains_rel}]->(pn:{norm_label})
+    OPTIONAL MATCH (pn)-[r_agg_def]->(ap)
+    DETACH DELETE pn, ap
+    """
+    execute_query(driver, delete_query, {"def_id": definition_id})
+
+    # Update the ProcessDefinition node's properties
+    update_query = f"""
+    MATCH (pd:{pd_label} {{definition_id: $def_id}})
+    SET pd.name = $name, pd.schedule = $schedule
+    """
+    execute_query(driver, update_query, {"def_id": definition_id, "name": definition_data.name, "schedule": definition_data.schedule})
+
+    # Create and link the new ProcessNorm nodes
+    agg_prop_label = CONFIG['aggregation_property_node_label']
+    agg_rel_name = CONFIG['defines_aggregation_by_rel_name']
+
+    for norm_data in definition_data.norms:
+        norm_id = norm_data.get("norm_id")
+        if not norm_id: continue
+        
+        properties = norm_data.copy()
+        aggregation_properties = properties.pop("aggregation_properties", [])
+
+        norm_query = f"""
+        MATCH (pd:{pd_label} {{definition_id: $def_id}})
+        CREATE (pn:{norm_label} {{norm_id: $norm_id}})
+        SET pn = $properties
+        MERGE (pd)-[:`{contains_rel}`]->(pn)
+        """
+        execute_query(driver, norm_query, {"def_id": definition_id, "norm_id": norm_id, "properties": properties})
+
+        if aggregation_properties:
+            agg_query = f"""
+            MATCH (pn:{norm_label} {{norm_id: $norm_id}})
+            UNWIND $agg_props as agg_prop
+            CREATE (ap:{agg_prop_label} {{name: agg_prop.name, attributeStorage: agg_prop.attributeStorage}})
+            MERGE (pn)-[:`{agg_rel_name}`]->(ap)
+            """
+            execute_query(driver, agg_query, {"norm_id": norm_id, "agg_props": aggregation_properties})
+
+    return {"definition_id": definition_id, **definition_data.model_dump()}
+
+
+def delete_process_definition(driver: Driver, definition_id: str):
+    pd_label = CONFIG['process_definition_node_label']
+    norm_label = CONFIG['process_norm_node_label']
+    contains_rel = CONFIG['contains_norm_rel_name']
+    
+    # Match the definition, its norms, and any aggregation properties on those norms, and delete them all
+    query = f"""
+    MATCH (pd:{pd_label} {{definition_id: $def_id}})
+    OPTIONAL MATCH (pd)-[:{contains_rel}]->(pn:{norm_label})
+    OPTIONAL MATCH (pn)-[r_agg_def]->(ap)
+    DETACH DELETE pd, pn, ap
+    """
+    execute_query(driver, query, {"def_id": definition_id})
+    return {"status": "success", "definition_id": definition_id}
+
+
 # --- NEW Dashboard Logic ---
+
+
 
 def get_dashboard_summary(driver: Driver) -> DashboardData:
     summary = {
@@ -987,6 +1159,77 @@ def get_dashboard_summary(driver: Driver) -> DashboardData:
     return DashboardData(**summary)
 
 # --- FastAPI Endpoints (Updated) ---
+
+@app.post("/api/process-definitions", response_model=ProcessDefinition, status_code=201)
+async def api_create_process_definition(definition: ProcessDefinitionCreate):
+    driver = get_neo4j_driver()
+    if not driver:
+        raise HTTPException(status_code=503, detail="Could not connect to Neo4j database.")
+    try:
+        new_def = create_process_definition(driver, definition)
+        return new_def
+    finally:
+        if driver: driver.close()
+
+@app.get("/api/process-definitions/{definition_id}", response_model=ProcessDefinition)
+async def api_get_process_definition(definition_id: str):
+    driver = get_neo4j_driver()
+    if not driver:
+        raise HTTPException(status_code=503, detail="Could not connect to Neo4j database.")
+    try:
+        definition = get_process_definition(driver, definition_id)
+        if not definition:
+            raise HTTPException(status_code=404, detail="Process Definition not found.")
+        return definition
+    finally:
+        if driver: driver.close()
+
+@app.post("/api/process-definitions/{definition_id}/run")
+async def api_run_process_definition(definition_id: str):
+    driver = get_neo4j_driver()
+    if not driver:
+        raise HTTPException(status_code=503, detail="Could not connect to Neo4j database.")
+    try:
+        # Running from this endpoint is always considered ad-hoc
+        analysis_output = run_definition(driver, definition_id, run_type="ad-hoc")
+        return {"results": analysis_output}
+    except Exception as e:
+        print(f"Error during ad-hoc run of definition {definition_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"An internal error occurred: {e}")
+
+@app.get("/api/process-definitions", response_model=List[ProcessDefinitionBase])
+async def api_get_all_process_definitions():
+    driver = get_neo4j_driver()
+    if not driver:
+        raise HTTPException(status_code=503, detail="Could not connect to Neo4j database.")
+    try:
+        definitions = get_all_process_definitions(driver)
+        return definitions
+    finally:
+        if driver: driver.close()
+
+@app.put("/api/process-definitions/{definition_id}", response_model=ProcessDefinition)
+async def api_update_process_definition(definition_id: str, definition: ProcessDefinitionCreate):
+    driver = get_neo4j_driver()
+    if not driver:
+        raise HTTPException(status_code=503, detail="Could not connect to Neo4j database.")
+    try:
+        updated_def = update_process_definition(driver, definition_id, definition)
+        return updated_def
+    finally:
+        if driver: driver.close()
+
+@app.delete("/api/process-definitions/{definition_id}")
+async def api_delete_process_definition(definition_id: str):
+    driver = get_neo4j_driver()
+    if not driver:
+        raise HTTPException(status_code=503, detail="Could not connect to Neo4j database.")
+    try:
+        result = delete_process_definition(driver, definition_id)
+        return result
+    finally:
+        if driver: driver.close()
+
 
 @app.post("/api/dashboard/summary", response_model=DashboardData)
 async def dashboard_summary():
