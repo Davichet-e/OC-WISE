@@ -196,7 +196,14 @@ const Dashboard: React.FC = () => {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const response = await fetch('/api/dashboard/summary');
+                // The request now sends a POST request with an empty body
+                const response = await fetch('http://localhost:8000/api/dashboard/summary', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({}), // Empty body
+                });
                 if (!response.ok) {
                     throw new Error('Failed to fetch data');
                 }

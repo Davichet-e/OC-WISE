@@ -23,6 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-
+*.pdf
 .env
 backend-old.py

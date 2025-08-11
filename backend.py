@@ -32,6 +32,13 @@ CONFIG = {
     "neo4j_password": os.environ.get("NEO4J_PASSWORD", "12345678"),
     "analysis_run_node_label": "AnalysisRun",
     "generated_in_rel_name": "GENERATED_IN",
+    "process_norm_node_label": "ProcessNorm",
+    "defined_in_rel_name": "DEFINED_IN",
+    "aggregation_result_node_label": "AggregationResult",
+    "has_aggregate_rel_name": "HAS_AGGREGATE",
+    "aggregation_property_node_label": "AggregationProperty",
+    "defines_aggregation_by_rel_name": "DEFINES_AGGREGATION_BY",
+    "aggregated_by_rel_name": "AGGREGATED_BY",
 }
 
 # --- Pydantic Models ---
@@ -39,6 +46,8 @@ CONFIG = {
 class NormRequest(BaseModel):
     config: Dict[str, Any]
     norms: List[Dict[str, Any]]
+    run_type: Optional[str] = "ad-hoc"
+    schedule: Optional[str] = None
 
 # --- FastAPI Setup ---
 app = FastAPI()
@@ -327,6 +336,7 @@ class ProcessNorm(ABC):
 
         print(f"\n=== Running Analysis for Norm: {self.norm_id} ===")
         print(f"Description: {self.description}")
+        run_id = params.get("run_id")
 
         diag_query_tuple = self.generate_diagnostic_query(config, params)
         if diag_query_tuple:
@@ -340,6 +350,8 @@ class ProcessNorm(ABC):
         if agg_query_tuple:
             agg_query, agg_params = agg_query_tuple
             agg_results = execute_query(driver, agg_query, agg_params)
+            if agg_results and run_id:
+                persist_aggregation_results(driver, config, self.norm_id, run_id, agg_results, params.get("aggregation_properties", []))
             report = format_aggregation_results(self.norm_id, self.description, agg_results)
         else:
             print("Aggregation query generation skipped or failed.")
@@ -653,10 +665,6 @@ def parse_and_run_norms(driver: Optional[Driver], config: Dict[str, Any], data: 
             print(f"An error occurred while running norm {norm_data.get('norm_id')}: {e}")
     return reports
 
-class NormRequest(BaseModel):
-    config: Dict[str, Any]
-    norms: List[Dict[str, Any]]
-
 class ConfigForTypes(BaseModel):
     config: Dict[str, Any]
 
@@ -687,7 +695,49 @@ class DashboardData(BaseModel):
     trend_data: List[TrendPoint]
     active_rules: List[ActiveRule]
 
-def run_analysis_from_request(request_data: NormRequest, run_type: str = "ad-hoc") -> str:
+def persist_aggregation_results(driver: Driver, config: Dict, norm_id: str, run_id: str, results: List[Dict], aggregation_properties: List[Dict]):
+    """
+    Persists aggregation results as nodes and links them to the AnalysisRun
+    and the AggregationProperty nodes that defined them.
+    """
+    if not aggregation_properties:
+        return # Nothing to link, so we can stop.
+
+    agg_label = config['aggregation_result_node_label']
+    run_label = config['analysis_run_node_label']
+    has_agg_rel = config['has_aggregate_rel_name']
+    norm_label = config['process_norm_node_label']
+    agg_prop_label = config['aggregation_property_node_label']
+    defines_agg_rel = config['defines_aggregation_by_rel_name']
+    agg_by_rel = config['aggregated_by_rel_name']
+
+    query = f"""
+    UNWIND $results as result_row
+    MATCH (run:{run_label} {{run_id: $run_id}})
+    MATCH (norm:{norm_label} {{norm_id: $norm_id}})
+
+    // Create the AggregationResult node
+    CREATE (agg_res:{agg_label})
+    SET agg_res = result_row, agg_res.norm_id = $norm_id
+    MERGE (run)-[:`{has_agg_rel}`]->(agg_res)
+
+    // Link to the defining AggregationProperty node(s)
+    WITH agg_res, norm
+    UNWIND $agg_props as agg_prop_def
+    MATCH (norm)-[:`{defines_agg_rel}`]->(ap:{agg_prop_label} {{name: agg_prop_def.name}})
+    MERGE (agg_res)-[:`{agg_by_rel}`]->(ap)
+    """
+    params = {
+        "results": results,
+        "run_id": run_id,
+        "norm_id": norm_id,
+        "agg_props": aggregation_properties
+    }
+    execute_query(driver, query, params)
+    print(f"Persisted {len(results)} aggregation results for norm {norm_id} in run {run_id}.")
+
+
+def run_analysis_from_request(request_data: NormRequest) -> str:
     driver = get_neo4j_driver()
     if not driver: return "Error: Could not connect to Neo4j database."
 
@@ -696,11 +746,21 @@ def run_analysis_from_request(request_data: NormRequest, run_type: str = "ad-hoc
     
     create_run_query = f"""
     CREATE (run:{run_label} {{
-        run_id: $run_id, run_type: $run_type,
-        start_time: datetime(), status: 'running'
+        run_id: $run_id, 
+        run_type: $run_type,
+        schedule: $schedule,
+        start_time: datetime(), 
+        status: 'running'
     }})
     """
-    execute_query(driver, create_run_query, {"run_id": run_id, "run_type": run_type})
+    execute_query(driver, create_run_query, {
+        "run_id": run_id, 
+        "run_type": request_data.run_type,
+        "schedule": request_data.schedule
+    })
+
+    if request_data.run_type == "scheduled":
+        persist_norms(driver, request_data.norms, run_id)
 
     old_stdout = sys.stdout
     sys.stdout = captured_output = io.StringIO()
@@ -722,36 +782,95 @@ def run_analysis_from_request(request_data: NormRequest, run_type: str = "ad-hoc
 
     return f"Analysis run {run_id} ({status}) completed.\n\n" + log_output + "\n".join(reports)
 
+
+def persist_norms(driver: Driver, norms: List[Dict[str, Any]], run_id: str):
+    """
+    Creates ProcessNorm nodes, their associated AggregationProperty nodes,
+    and links them to the AnalysisRun.
+    """
+    norm_label = CONFIG['process_norm_node_label']
+    run_label = CONFIG['analysis_run_node_label']
+    defined_in_rel = CONFIG['defined_in_rel_name']
+    agg_prop_label = CONFIG['aggregation_property_node_label']
+    agg_rel_name = CONFIG['defines_aggregation_by_rel_name']
+
+    for norm_data in norms:
+        properties = norm_data.copy()
+        norm_id = properties.get("norm_id")
+        if not norm_id:
+            continue
+
+        # Extract complex properties and remove them from the main properties map
+        aggregation_properties = properties.pop("aggregation_properties", [])
+
+        # Create the ProcessNorm node with its simple properties
+        query = f"""
+        MATCH (run:{run_label} {{run_id: $run_id}})
+        MERGE (n:{norm_label} {{norm_id: $norm_id}})
+        SET n = $properties
+        MERGE (n)-[:`{defined_in_rel}`]->(run)
+        RETURN n
+        """
+        params = {
+            "run_id": run_id,
+            "norm_id": norm_id,
+            "properties": properties
+        }
+        execute_query(driver, query, params)
+
+        # If there are aggregation properties, create and link them as separate nodes
+        if aggregation_properties:
+            agg_query = f"""
+            MATCH (n:{norm_label} {{norm_id: $norm_id}})
+            UNWIND $agg_props as agg_prop
+            CREATE (ap:{agg_prop_label} {{name: agg_prop.name, attributeStorage: agg_prop.attributeStorage}})
+            MERGE (n)-[:`{agg_rel_name}`]->(ap)
+            """
+            agg_params = {
+                "norm_id": norm_id,
+                "agg_props": aggregation_properties
+            }
+            execute_query(driver, agg_query, agg_params)
+
+    print(f"Persisted {len(norms)} norms and their configurations for run {run_id}.")
+
 # --- NEW Dashboard Logic ---
 
-def get_dashboard_summary(driver: Driver, norms_config: List[Dict[str, Any]]) -> DashboardData:
+def get_dashboard_summary(driver: Driver) -> DashboardData:
     summary = {
         "overall_compliance": 1.0, "total_violations": 0, "top_violated_rules": [],
         "trend_data": [], "active_rules": []
     }
-    norm_descriptions = {n['norm_id']: n['description'] for n in norms_config}
     run_label = CONFIG['analysis_run_node_label']
     diag_label = CONFIG['diagnostic_node_label']
     gen_in_rel = CONFIG['generated_in_rel_name']
+    norm_label = CONFIG['process_norm_node_label']
+    defined_in_rel = CONFIG['defined_in_rel_name']
+    agg_result_label = CONFIG['aggregation_result_node_label']
+    has_agg_rel = CONFIG['has_aggregate_rel_name']
 
     with driver.session(database="neo4j") as session:
+        # Find the latest completed run
         latest_run_result = session.run(f"""
-            MATCH (run:{run_label} {{status: 'completed', run_type: 'scheduled'}})
+            MATCH (run:{run_label} {{status: 'completed'}})
             RETURN run.run_id as run_id ORDER BY run.start_time DESC LIMIT 1
         """).single()
 
         if not latest_run_result:
-            print("No completed scheduled runs found for dashboard summary. Falling back to latest ad-hoc run.")
-            latest_run_result = session.run(f"""
-                MATCH (run:{run_label} {{status: 'completed', run_type: 'ad-hoc'}})
-                RETURN run.run_id as run_id ORDER BY run.start_time DESC LIMIT 1
-            """).single()
-            if not latest_run_result:
-                print("No completed runs found at all.")
-                return DashboardData(**summary)
+            print("No completed runs found.")
+            return DashboardData(**summary)
         
         latest_run_id = latest_run_result['run_id']
 
+        # Fetch norm descriptions
+        norm_descriptions_query = f"""
+        MATCH (n:{norm_label})-[:{defined_in_rel}]->(run:{run_label} {{run_id: $run_id}})
+        RETURN n.norm_id as norm_id, n.description as description
+        """
+        norm_desc_results = session.run(norm_descriptions_query, run_id=latest_run_id)
+        norm_descriptions = {r['norm_id']: r['description'] for r in norm_desc_results}
+
+        # Fetch overall compliance and total violations
         compliance_query = f"""
         MATCH (d:{diag_label})-[:`{gen_in_rel}`]->(:{run_label} {{run_id: $run_id}})
         WITH count(d) AS total, count(CASE WHEN d.complies = false THEN 1 END) AS violations
@@ -762,26 +881,93 @@ def get_dashboard_summary(driver: Driver, norms_config: List[Dict[str, Any]]) ->
             summary['total_violations'] = result['violations']
             summary['overall_compliance'] = (result['total'] - result['violations']) / result['total']
 
+        # Fetch top violated rules
         top_rules_query = f"""
         MATCH (d:{diag_label} {{complies: false}})-[:`{gen_in_rel}`]->(:{run_label} {{run_id: $run_id}})
         RETURN d.norm_id AS rule_id, count(d) AS violations
         ORDER BY violations DESC LIMIT 5
         """
-        top_rules = [TopRule(rule_id=r['rule_id'], description=norm_descriptions.get(r['rule_id'], "Unknown Rule"), violations=r['violations']) for r in session.run(top_rules_query, run_id=latest_run_id)]
-        summary['top_violated_rules'] = top_rules
+        top_rules_results = session.run(top_rules_query, run_id=latest_run_id)
+        top_rules = [r.data() for r in top_rules_results]
 
+        # Fetch aggregation results for the latest run
+        aggregation_query = f"""
+        MATCH (:{run_label} {{run_id: $run_id}})-[:`{has_agg_rel}`]->(agg:{agg_result_label})
+        RETURN agg.norm_id as rule_id, agg.grouping_key as grouping_key, agg.compliant_nodes as compliant, agg.total_nodes as total
+        """
+        agg_results = session.run(aggregation_query, run_id=latest_run_id)
+        
+        # Process aggregation results into a dictionary for easy lookup
+        disaggregated_data = {}
+        for record in agg_results:
+            rule_id = record['rule_id']
+            if rule_id not in disaggregated_data:
+                disaggregated_data[rule_id] = []
+            
+            total = record.get('total') or record.get('total_instances') or record.get('total_entities') or 0
+            compliant = record.get('compliant') or record.get('compliant_instances') or record.get('compliant_entities') or 0
+            
+            if total > 0:
+                violations = total - compliant
+                grouping_key = record['grouping_key']
+                # Ensure grouping_key is a string
+                value = str(grouping_key[0]) if isinstance(grouping_key, list) and grouping_key else str(grouping_key)
+
+                disaggregated_data[rule_id].append({
+                    "value": value,
+                    "violations": violations
+                })
+
+        # Combine top rules with their disaggregated data
+        final_top_rules = []
+        for rule in top_rules:
+            rule_id = rule['rule_id']
+            disaggregated_violations = []
+            total_violations_for_rule = rule['violations'] # Default value
+
+            if rule_id in disaggregated_data:
+                # If we have aggregated data, use it as the source of truth for violations
+                # to ensure consistency in percentages.
+                rule_disaggregated_data = disaggregated_data[rule_id]
+                total_from_agg = sum(item['violations'] for item in rule_disaggregated_data)
+                
+                if total_from_agg > 0:
+                    total_violations_for_rule = total_from_agg # Override with more precise total
+                    for item in rule_disaggregated_data:
+                        percentage = item['violations'] / total_violations_for_rule
+                        disaggregated_violations.append(
+                            DisaggregatedViolation(value=item['value'], percentage=percentage)
+                        )
+
+            final_top_rules.append(TopRule(
+                rule_id=rule_id,
+                description=norm_descriptions.get(rule_id, "Unknown Rule"),
+                violations=total_violations_for_rule,
+                disaggregated_violations=disaggregated_violations if disaggregated_violations else None
+            ))
+        summary['top_violated_rules'] = final_top_rules
+
+        # Fetch trend data
         trend_query = f"""
         MATCH (run:{run_label} {{status: 'completed', run_type: 'scheduled'}})
         WITH run ORDER BY run.start_time DESC LIMIT 6
         MATCH (d:{diag_label} {{complies: false}})-[:`{gen_in_rel}`]->(run)
-        RETURN coalesce(run.period_value, "W" + toString(run.start_time.week)) AS period, count(d) AS violations
-        ORDER BY run.start_time
+        RETURN 
+            coalesce(run.schedule, "W" + toString(run.start_time.week)) AS period, 
+            count(d) AS violations
         """
         summary['trend_data'] = [TrendPoint(**record.data()) for record in session.run(trend_query)]
 
-    active_rules = []
-    for norm in norms_config:
-        if norm.get('enabled', True):
+        # Fetch active rules
+        active_rules_query = f"""
+        MATCH (n:{norm_label})-[:{defined_in_rel}]->(run:{run_label} {{run_id: $run_id}})
+        WHERE n.enabled = true
+        RETURN n
+        """
+        active_rules_results = session.run(active_rules_query, run_id=latest_run_id)
+        active_rules = []
+        for record in active_rules_results:
+            norm = record['n']
             monitored = []
             if 'activity_a' in norm: monitored.append(norm['activity_a'])
             if 'activity_b' in norm: monitored.append(norm['activity_b'])
@@ -791,29 +977,31 @@ def get_dashboard_summary(driver: Driver, norms_config: List[Dict[str, Any]]) ->
             if 'target_activity' in norm: monitored.append(norm['target_activity'])
             if 'target_name' in norm: monitored.append(norm['target_name'])
             active_rules.append(ActiveRule(
-                rule_id=norm['norm_id'], description=norm['description'],
-                status='Active', monitored_objects=list(set(monitored))
+                rule_id=norm['norm_id'], 
+                description=norm['description'],
+                status='Active', 
+                monitored_objects=list(set(monitored))
             ))
-    summary['active_rules'] = active_rules
+        summary['active_rules'] = active_rules
     
     return DashboardData(**summary)
 
 # --- FastAPI Endpoints (Updated) ---
 
 @app.post("/api/dashboard/summary", response_model=DashboardData)
-async def dashboard_summary(request: NormRequest):
+async def dashboard_summary():
     driver = get_neo4j_driver()
     if not driver:
         raise HTTPException(status_code=503, detail="Could not connect to Neo4j database.")
     try:
-        return get_dashboard_summary(driver, request.norms)
+        return get_dashboard_summary(driver)
     finally:
         if driver: driver.close()
 
 @app.post("/api/run-analysis")
 async def perform_analysis(request: NormRequest):
     try:
-        analysis_output = run_analysis_from_request(request, run_type="ad-hoc")
+        analysis_output = run_analysis_from_request(request)
         return {"results": analysis_output}
     except Exception as e:
         print(f"Error during analysis: {e}")

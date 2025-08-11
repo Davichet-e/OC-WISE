@@ -571,7 +571,7 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
     alert("Norm added!");
   };
 
-  const handleRunAnalysis = async () => {
+  const handleRunAnalysis = async (runType: 'ad-hoc' | 'scheduled' = 'ad-hoc') => {
     if (createdNorms.length === 0) {
       alert("Please add at least one norm before running the analysis.");
       return;
@@ -582,6 +582,8 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
     const payload = {
       config: globalProcessConfig,
       norms: createdNorms,
+      run_type: runType,
+      schedule: runType === 'scheduled' ? 'weekly' : undefined,
     };
 
     try {
@@ -848,9 +850,14 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({ glo
         <div className="w-full h-full p-5 bg-white dark:bg-gray-800 overflow-y-auto shadow-lg flex flex-col">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold">Created Norms ({createdNorms.length})</h2>
-            <Button onClick={handleRunAnalysis} disabled={isAnalysisRunning || createdNorms.length === 0} variant="default">
-              {isAnalysisRunning ? 'Running...' : 'Run Analysis'}
-            </Button>
+            <div className="flex space-x-2">
+              <Button onClick={() => handleRunAnalysis('ad-hoc')} disabled={isAnalysisRunning || createdNorms.length === 0} variant="default">
+                {isAnalysisRunning ? 'Running...' : 'Run Analysis'}
+              </Button>
+              <Button onClick={() => handleRunAnalysis('scheduled')} disabled={isAnalysisRunning || createdNorms.length === 0} variant="outline">
+                Run Weekly Scheduled Analysis
+              </Button>
+            </div>
           </div>
           <div className="flex-grow overflow-y-auto">
             <NormsTable norms={createdNorms} onDelete={onDeleteNorm} onToggle={onToggleNorm} />
