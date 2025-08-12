@@ -815,7 +815,7 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
         <hr className="my-6 border-gray-200 dark:border-gray-700" />
         <div className="space-y-4">
           <h3 className="text-lg font-semibold mb-2">Filters</h3>
-          {currentGlobalNormDetails.filters.slice(1).map((filter, index) => (
+          {currentGlobalNormDetails.filters.slice(isPropertyNorm ? 1 : 0).map((filter, index) => (
             <PropertyFilter
               key={index}
               filter={filter}
