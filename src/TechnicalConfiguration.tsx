@@ -3,10 +3,9 @@ import { useGlobalConfig } from './GlobalConfig';
 import { GlobalProcessConfig } from './config';
 import { useLocation } from 'react-router-dom';
 
-// Helper components (mimicking shadcn/ui with Tailwind)
-
+// Helper components with updated dark mode styles
 const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
-    <div className={`bg-white dark:bg-gray-800 shadow-lg rounded-lg p-6 ${className}`}>
+    <div className={`bg-slate-800/50 border border-slate-700/80 shadow-lg rounded-2xl p-6 ${className}`}>
         {children}
     </div>
 );
@@ -18,39 +17,39 @@ const CardHeader: React.FC<{ children: React.ReactNode; className?: string }> = 
 );
 
 const CardTitle: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
-    <h2 className={`text-2xl font-semibold text-gray-900 dark:text-white ${className}`}>
+    <h2 className={`text-2xl font-semibold text-white ${className}`}>
         {children}
     </h2>
 );
 
 const CardDescription: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
-    <p className={`text-sm text-gray-600 dark:text-gray-400 ${className}`}>
+    <p className={`text-sm text-slate-400 ${className}`}>
         {children}
     </p>
 );
 
-const Label: React.FC<{ htmlFor: string; children: React.ReactNode; className?: string }> = ({ htmlFor, children, className }) => (
-    <label htmlFor={htmlFor} className={`block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 ${className}`}>
+export const Label: React.FC<{ htmlFor: string; children: React.ReactNode; className?: string }> = ({ htmlFor, children, className }) => (
+    <label htmlFor={htmlFor} className={`block text-sm font-medium text-slate-300 mb-1 ${className}`}>
         {children}
     </label>
 );
 
-const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => (
+export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => (
     <input
         {...props}
-        className={`mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm ${props.className}`}
+        className={`mt-1 block w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md shadow-sm text-white placeholder-slate-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm ${props.className}`}
     />
 );
 
-const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'secondary' }> = ({ children, className, variant = 'default', ...props }) => {
+export const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'secondary' }> = ({ children, className, variant = 'default', ...props }) => {
     const baseStyle = "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background";
     let variantStyle = "";
     switch (variant) {
         case 'outline':
-            variantStyle = "bg-transparent border border-input text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700";
+            variantStyle = "bg-transparent border border-slate-600 text-slate-200 hover:bg-slate-700";
             break;
         case 'secondary':
-            variantStyle = "bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600";
+            variantStyle = "bg-slate-700 text-slate-200 hover:bg-slate-600";
             break;
         default: // default
             variantStyle = "bg-indigo-600 text-white hover:bg-indigo-700";
@@ -62,20 +61,20 @@ const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant
     );
 };
 
-const Progress: React.FC<{ value: number; max: number; className?: string }> = ({ value, max, className }) => (
-    <div className={`w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-4 ${className}`}>
+export const Progress: React.FC<{ value: number; max: number; className?: string }> = ({ value, max, className }) => (
+    <div className={`w-full bg-slate-700 rounded-full h-2.5 mb-4 ${className}`}>
         <div
-            className="bg-indigo-600 h-2.5 rounded-full"
+            className="bg-indigo-500 h-2.5 rounded-full"
             style={{ width: `${(value / max) * 100}%` }}
         ></div>
     </div>
 );
 
-const Tooltip: React.FC<{ children: React.ReactNode, content: string }> = ({ children, content }) => (
+export const Tooltip: React.FC<{ children: React.ReactNode, content: string }> = ({ children, content }) => (
     <div className="relative inline-block group">
         {children}
         <div
-            className="absolute bottom-full left-1/2 z-20 mb-2 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+            className="absolute bottom-full left-1/2 z-20 mb-2 px-3 py-1.5 text-xs font-medium text-white bg-slate-900 border border-slate-700 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
             style={{
                 minWidth: 100,
                 maxWidth: 200,
@@ -89,13 +88,13 @@ const Tooltip: React.FC<{ children: React.ReactNode, content: string }> = ({ chi
             }}
         >
             {content}
-            <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-x-4 border-x-transparent border-t-4 border-t-gray-900"></div>
+            <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-x-4 border-x-transparent border-t-4 border-t-slate-900"></div>
         </div>
     </div>
 );
 
-const InfoIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`inline-block ml-1 text-gray-400 dark:text-gray-500 ${className}`}>
+export const InfoIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`inline-block ml-1 text-slate-400 ${className}`}>
         <circle cx="12" cy="12" r="10"></circle>
         <line x1="12" y1="16" x2="12" y2="12"></line>
         <line x1="12" y1="8" x2="12.01" y2="8"></line>
@@ -156,14 +155,18 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
     const [currentStep, setCurrentStep] = useState(1);
     const { setAutocompleteData } = useGlobalConfig();
     const [error, setError] = useState<string | null>(null);
-
-    // 3. GET the location and the return path
     const location = useLocation();
     const returnTo = location.state?.from;
 
     useEffect(() => {
         setConfig(currentConfig);
     }, [currentConfig]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value, type } = e.target;
+        const targetValue = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+        setConfig(prev => ({ ...prev, [name]: targetValue }));
+    };
 
     const handleNext = async () => {
         setError(null);
@@ -203,19 +206,12 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
                     entityTypes: entityTypesData.types || [],
                     activityTypes: activityTypesData.types || [],
                 });
-                // 4. PASS the return path when saving
                 onConfigSave(config, returnTo);
             } catch (error) {
                 console.error("Failed to fetch autocomplete data:", error);
                 setError(error instanceof Error ? error.message : "An unknown error occurred. Check the console and backend for details.");
             }
         }
-    };
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-        const targetValue = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
-        setConfig(prev => ({ ...prev, [name]: targetValue }));
     };
 
     const handleBack = () => {
@@ -233,16 +229,16 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
     const isLastStep = currentStep === steps.length;
 
     return (
-        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8 flex flex-col items-center">
+        <div className="min-h-screen bg-slate-900 py-8 px-4 sm:px-6 lg:px-8 flex flex-col items-center">
             <div className="w-full max-w-2xl">
                 <Card className="w-full max-h-[90vh] overflow-y-auto">
                     {error && (
-                        <div className="p-4 mb-4 text-sm text-red-700 bg-red-100 rounded-lg dark:bg-red-200 dark:text-red-800" role="alert">
+                        <div className="p-4 mb-4 text-sm text-red-300 bg-red-500/20 rounded-lg" role="alert">
                             <span className="font-medium">Error!</span> {error}
                         </div>
                     )}
                     {!onCancel && (
-                        <div className="p-4 mb-4 text-sm text-blue-700 bg-blue-100 rounded-lg dark:bg-blue-200 dark:text-blue-800" role="alert">
+                        <div className="p-4 mb-4 text-sm text-blue-300 bg-blue-500/20 rounded-lg" role="alert">
                             <span className="font-medium">Welcome!</span> Please configure your process details to get started.
                         </div>
                     )}
@@ -254,7 +250,7 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
                         <Progress value={currentStep} max={steps.length} className="mt-2" />
                     </CardHeader>
 
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">{activeStep.description}</p>
+                    <p className="text-sm text-slate-400 mb-6">{activeStep.description}</p>
 
                     <form onSubmit={(e) => { e.preventDefault(); handleNext(); }}>
                         <div className="space-y-6">
@@ -270,7 +266,7 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
                                             </Label>
                                             <select
                                                 id={fieldName} name={fieldName} value={config.dfTypeDistinction} onChange={handleChange}
-                                                className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                                className="mt-1 block w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md shadow-sm text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                             >
                                                 <option value="label">DF edge label includes entity type (e.g., DF_Order)</option>
                                                 <option value="property">DF edge has a property for type</option>
@@ -297,18 +293,17 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
                         </div>
 
                         {isLastStep && (
-                            <div className="mt-8 p-4 border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-800/50">
-                                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">Review Configuration</h3>
-                                <ul className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                            <div className="mt-8 p-4 border border-slate-700 rounded-md bg-slate-800/50">
+                                <h3 className="text-lg font-medium text-white mb-3">Review Configuration</h3>
+                                <ul className="space-y-1 text-sm text-slate-300">
                                     {Object.entries(config).map(([key, value]) => {
                                         const fieldConf = fieldDetails[key as keyof GlobalProcessConfig];
-                                        if (!fieldConf) return null; // Skip fields not in details
-                                        // Conditional rendering logic based on dependencies
+                                        if (!fieldConf) return null;
                                         if (key === 'dfTypePropertyName' && config.dfTypeDistinction !== 'property') return null;
                                         return (
                                             <li key={key} className="flex justify-between">
                                                 <span className="font-semibold">{fieldConf.label}:</span>
-                                                <span className="text-right font-mono text-indigo-600 dark:text-indigo-400">{value.toString()}</span>
+                                                <span className="text-right font-mono text-indigo-400">{value.toString()}</span>
                                             </li>
                                         );
                                     })}
@@ -335,4 +330,4 @@ const TechnicalConfigurator: React.FC<TechnicalConfiguratorProps> = ({ currentCo
 };
 
 export default TechnicalConfigurator;
-export { Label, Input, Button, Progress, Tooltip, InfoIcon };
+

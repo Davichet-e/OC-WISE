@@ -519,7 +519,7 @@ class ActivityDirectlyFollowsNorm(ProcessNorm):
         {where_clause}
         OPTIONAL MATCH (ev_a)-[:{config['df_rel_name']}]->(ev_b:{config['event_node_label']} {{ `{config['activity_property']}`: $activity_b }})
         WITH ev_a, (ev_b IS NOT NULL) as directly_follows
-        WITH ev_a, directly_follows, (directly_follows = ${not forbidden}) as complies
+        WITH ev_a, directly_follows, (directly_follows = {not forbidden}) as complies
         MERGE (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id, related_id: elementId(ev_a) }})
         SET diag.complies = complies
         MERGE (ev_a)-[:{config['compliance_rel_name']}]->(diag)

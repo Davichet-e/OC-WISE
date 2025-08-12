@@ -46,11 +46,11 @@ const PropertyFilter: React.FC<PropertyFilterProps> = ({ filter, index, onChange
   };
 
   return (
-    <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-750 rounded-lg border border-gray-200 dark:border-gray-600 relative">
+    <div className="space-y-3 p-3 bg-black-50 dark:bg-black-750 rounded-lg border border-black-200 dark:border-black-600 relative">
       {isRemovable && (
         <button
           onClick={() => onRemove(index)}
-          className="absolute top-2 right-2 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+          className="absolute top-2 right-2 text-black-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
           aria-label="Remove filter"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -66,7 +66,7 @@ const PropertyFilter: React.FC<PropertyFilterProps> = ({ filter, index, onChange
         <div>
           <Label htmlFor={`property_data_type_${index}`}>Data Type:</Label>
           {/* FIXED: This now calls the correct handler */}
-          <select id={`property_data_type_${index}`} name="property_data_type" value={filter.property_data_type} onChange={handleDataTypeChange} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm">
+          <select id={`property_data_type_${index}`} name="property_data_type" value={filter.property_data_type} onChange={handleDataTypeChange} className="mt-1 block w-full px-3 py-2 bg-black dark:bg-black-700 border border-black-300 dark:border-black-600 rounded-md shadow-sm">
             <option value="string">String</option>
             <option value="number">Number</option>
             <option value="datetime">Datetime</option>
@@ -74,7 +74,7 @@ const PropertyFilter: React.FC<PropertyFilterProps> = ({ filter, index, onChange
         </div>
         <div>
           <Label htmlFor={`property_operator_${index}`}>Operator:</Label>
-          <select id={`property_operator_${index}`} name="property_operator" value={filter.property_operator} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm">
+          <select id={`property_operator_${index}`} name="property_operator" value={filter.property_operator} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 bg-black dark:bg-black-700 border border-black-300 dark:border-black-600 rounded-md shadow-sm">
             {filter.property_data_type === 'string' ? (
               <>
                 <option value="in">is one of</option>
@@ -102,7 +102,7 @@ const PropertyFilter: React.FC<PropertyFilterProps> = ({ filter, index, onChange
       <div>
         <Label htmlFor={`property_value_${index}`}>
           Value(s)
-          {filter.property_data_type === 'string' && <span className="text-gray-500 text-xs"> (comma-separated)</span>}
+          {filter.property_data_type === 'string' && <span className="text-black-500 text-xs"> (comma-separated)</span>}
         </Label>
         {filter.property_data_type === 'datetime' ? (
           <div className="flex flex-wrap items-center space-x-2">
@@ -112,18 +112,18 @@ const PropertyFilter: React.FC<PropertyFilterProps> = ({ filter, index, onChange
               name="property_value"
               value={String(filter.property_value)}
               onChange={handleInputChange}
-              className="bg-white dark:bg-gray-600"
+              className="bg-black dark:bg-black-600"
             />
             {filter.property_operator === 'between' && (
               <>
-                <span className="text-gray-500 dark:text-gray-400 text-sm">and</span>
+                <span className="text-black-500 dark:text-black-400 text-sm">and</span>
                 <Input
                   id={`property_value_end_${index}`}
                   type="datetime-local"
                   name="property_value_end" // This name correctly maps to the 'property_value_end' field in the Filter
                   value={filter.property_value_end || ''}
                   onChange={handleInputChange} // The generic handler works here because the 'name' attribute is correct
-                  className="bg-white dark:bg-gray-600"
+                  className="bg-black dark:bg-black-600"
                 />
               </>
             )}
@@ -141,7 +141,7 @@ const PropertyFilter: React.FC<PropertyFilterProps> = ({ filter, index, onChange
       </div>
       <div>
         <Label htmlFor={`attributeStorage_${index}`}>Attribute Storage:</Label>
-        <select id={`attributeStorage_${index}`} name="attributeStorage" value={filter.attributeStorage} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm">
+        <select id={`attributeStorage_${index}`} name="attributeStorage" value={filter.attributeStorage} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 bg-black dark:bg-black-700 border border-black-300 dark:border-black-600 rounded-md shadow-sm">
           <option value="property">As properties on the node</option>
           <option value="node">As separate nodes</option>
         </select>

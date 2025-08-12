@@ -20,6 +20,8 @@ const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
     const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
     const [activeSuggestionIndex, setActiveSuggestionIndex] = useState<number>(-1);
     const inputRef = useRef<HTMLInputElement>(null);
+    console.log(suggestions);
+
 
     useEffect(() => {
         // Close suggestions when clicking outside
@@ -91,6 +93,7 @@ const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
             }
         }
     };
+    console.log(showSuggestions, value, filteredSuggestions);
 
     const suggestionsListComponent = showSuggestions && value && filteredSuggestions.length > 0 && (
         <ul className="suggestions-list">
@@ -105,6 +108,9 @@ const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
             ))}
         </ul>
     );
+
+    console.log(suggestionsListComponent);
+
 
     return (
         <div className="autocomplete-container" ref={inputRef}>

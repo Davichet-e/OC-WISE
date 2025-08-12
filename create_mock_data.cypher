@@ -4,6 +4,7 @@ MATCH (p:ProcessNorm) DETACH DELETE p;
 MATCH (a:AnalysisRun) DETACH DELETE a;
 MATCH (ar:AggregationResult) DETACH DELETE ar;
 MATCH (ap:AggregationProperty) DETACH DELETE ap;
+MATCH (pd:ProcessDefinition) DETACH DELETE pd;
 
 // --- 1. Create Core Nodes ---
 CREATE (run:AnalysisRun { run_id: "mock_run_001", run_type: "scheduled", start_time: datetime(), status: "completed", schedule: "W32" });
@@ -69,3 +70,23 @@ CREATE (run_w28:AnalysisRun { run_id: "mock_run_w28", run_type: "scheduled", sta
 WITH run_w28 UNWIND range(1, 75) as i CREATE (d:Diagnostic {norm_id: "rule_001", complies: false})-[:GENERATED_IN]->(run_w28);
 CREATE (run_w27:AnalysisRun { run_id: "mock_run_w27", run_type: "scheduled", start_time: datetime() - duration({days: 35}), status: "completed", schedule: "W27" })
 WITH run_w27 UNWIND range(1, 50) as i CREATE (d:Diagnostic {norm_id: "rule_001", complies: false})-[:GENERATED_IN]->(run_w27);
+
+// --- 7. Create Example Process Definitions and Link Norms ---
+CREATE (pd1:ProcessDefinition { definition_id: 'def_mock_01', name: 'Financial Controls', schedule: 'daily' });
+CREATE (pd2:ProcessDefinition { definition_id: 'def_mock_02', name: 'Logistics & Shipping', schedule: 'weekly' });
+CREATE (pd3:ProcessDefinition { definition_id: 'def_mock_03', name: 'Full Process Audit', schedule: 'monthly' });
+
+// Link norms to 'Financial Controls'
+MATCH (pd:ProcessDefinition {definition_id: 'def_mock_01'})
+MATCH (pn:ProcessNorm) WHERE pn.norm_id IN ["rule_001", "rule_003"]
+MERGE (pd)-[:CONTAINS_NORM]->(pn);
+
+// Link norms to 'Logistics & Shipping'
+MATCH (pd:ProcessDefinition {definition_id: 'def_mock_02'})
+MATCH (pn:ProcessNorm) WHERE pn.norm_id IN ["rule_002", "rule_004"]
+MERGE (pd)-[:CONTAINS_NORM]->(pn);
+
+// Link all norms to 'Full Process Audit'
+MATCH (pd:ProcessDefinition {definition_id: 'def_mock_03'})
+MATCH (pn:ProcessNorm)
+MERGE (pd)-[:CONTAINS_NORM]->(pn);

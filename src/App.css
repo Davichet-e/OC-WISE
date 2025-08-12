@@ -10,13 +10,15 @@ body,
   padding: 0;
   overflow: hidden;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #f4f7f6;
-  color: #333;
 }
 
 .App {
   display: flex;
   height: 100%;
+  background-color: #0f172a;
+  /* bg-slate-900 */
+  color: #d1d5db;
+  /* text-gray-300 */
 }
 
 .graph-norm-creator-container {
@@ -24,27 +26,32 @@ body,
   flex-direction: row;
   height: 100vh;
   width: 100vw;
+  background-color: #0f172a;
+  /* bg-slate-900 */
 }
 
+/* Overriding sidebar to match dark theme */
 .sidebar {
-  width: 350px;
-  /* Increased width for more space */
-  min-width: 320px;
-  /* Minimum width */
+  width: 380px;
+  min-width: 350px;
   padding: 20px;
-  border-right: 1px solid #d1d5db;
-  background-color: #f9fafb;
+  border-right: 1px solid #334155;
+  /* border-slate-700 */
+  background-color: #1e293b;
+  /* bg-slate-800 */
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
 }
 
 .sidebar h2,
 .sidebar h3 {
   margin-top: 0;
-  color: #1f2937;
-  border-bottom: 1px solid #e5e7eb;
+  color: #f8fafc;
+  /* text-slate-50 */
+  border-bottom: 1px solid #334155;
+  /* border-slate-700 */
   padding-bottom: 8px;
   margin-bottom: 15px;
   font-weight: 600;
@@ -56,7 +63,8 @@ body,
   margin-bottom: 5px;
   font-size: 0.9em;
   font-weight: 500;
-  color: #4b5563;
+  color: #94a3b8;
+  /* text-slate-400 */
 }
 
 .sidebar input[type="text"],
@@ -65,327 +73,247 @@ body,
   width: 100%;
   padding: 10px;
   margin-bottom: 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #475569;
+  /* border-slate-600 */
   border-radius: 6px;
   box-sizing: border-box;
   font-size: 0.95em;
+  background-color: #334155;
+  /* bg-slate-700 */
+  color: #f1f5f9;
+  /* text-slate-100 */
   transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
 .sidebar input[type="text"]:focus,
 .sidebar input[type="number"]:focus,
 .sidebar select:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+  border-color: #6366f1;
+  /* focus:border-indigo-500 */
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
   outline: none;
 }
 
-/* Palette node is removed, so these styles are no longer needed or can be repurposed */
-/*
-.palette-node { ... }
-.palette-node:hover { ... }
-.palette-node .node-icon { ... }
-*/
-
 .canvas-container {
   flex-grow: 1;
-  /* Explicit width can be set, but flex-grow is better for responsiveness */
-  /* For a fixed width, uncomment below and adjust .sidebar width accordingly */
-  /* width: calc(100vw - 350px - 380px); */
-  /* Example: Total width - sidebar - output panel */
-  min-width: 400px;
-  /* Ensure canvas has a minimum decent width */
-  background-color: #e0e7ff;
-  /* Lighter, pleasant canvas background */
   position: relative;
   height: 100%;
-  border-left: 1px solid #d1d5db;
-  border-right: 1px solid #d1d5db;
-}
-
-.react-flow-canvas {
-  width: 100%;
-  height: 100%;
+  border-left: 1px solid #334155;
+  border-right: 1px solid #334155;
 }
 
 .output-panel {
-  width: 380px;
+  width: 420px;
   min-width: 350px;
-  padding: 20px;
-  /* border-left: 1px solid #d1d5db; */
-  /* Removed as canvas-container now has right border */
-  background-color: #f9fafb;
+  background-color: #1e293b;
+  /* bg-slate-800 */
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.05);
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2);
 }
 
 .output-panel h2 {
-  margin-top: 0;
-  color: #1f2937;
-  border-bottom: 1px solid #e5e7eb;
-  padding-bottom: 8px;
-  margin-bottom: 15px;
-  font-weight: 600;
-}
-
-.output-panel ul {
-  list-style-type: none;
-  padding-left: 0;
-  max-height: 250px;
-  overflow-y: auto;
-  margin-bottom: 20px;
-}
-
-.output-panel li {
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  border-radius: 6px;
-  font-size: 0.9em;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-}
-
-.output-panel li strong {
-  color: #1e40af;
+  color: #f8fafc;
+  border-bottom: 1px solid #334155;
 }
 
 .output-panel textarea {
   flex-grow: 1;
-  border: 1px solid #d1d5db;
+  border: 1px solid #475569;
   border-radius: 6px;
   padding: 10px;
   font-size: 0.85em;
-  background-color: #fdfdff;
-  color: #374151;
+  background-color: #0f172a;
+  /* bg-slate-900 */
+  color: #cbd5e1;
+  /* text-slate-300 */
 }
 
-
-.action-button {
-  background-color: #10b981;
-  color: white;
-  padding: 12px 18px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 1em;
-  font-weight: 500;
-  margin-top: 20px;
-  transition: background-color 0.2s ease;
-  width: 100%;
-}
-
-.action-button:hover {
-  background-color: #059669;
-}
-
-/* Enhanced Custom Node Styles */
+/* Enhanced Custom Node Styles for Dark Mode */
 .custom-node {
-  background-color: #ffffff;
-  border: 2px solid #9ca3af;
-  /* Made border more prominent */
+  background-color: #1f2937;
+  /* bg-gray-800 */
+  border: 2px solid #4b5563;
+  /* border-gray-600 */
   border-radius: 10px;
-  /* Slightly more rounded */
   padding: 0;
   width: 200px;
-  /* Increased width for better text fit */
   text-align: left;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .custom-node.selected {
-  border-color: #2563eb;
-  /* Stronger blue for selected */
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.4), 0 5px 10px rgba(0, 0, 0, 0.15);
+  border-color: #3b82f6;
+  /* border-blue-500 */
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4), 0 5px 10px rgba(0, 0, 0, 0.2);
 }
 
 .custom-node-header {
   padding: 10px 15px;
-  /* Increased padding */
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #374151;
+  /* border-gray-700 */
   display: flex;
   align-items: center;
   font-weight: 600;
   font-size: 0.85em;
-  /* Slightly larger */
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-top-left-radius: 8px;
-  /* Match parent rounding */
   border-top-right-radius: 8px;
 }
 
 .custom-node .node-icon {
   margin-right: 10px;
-  /* Increased spacing */
   font-size: 1.3em;
-  /* Larger icon */
 }
 
 .custom-node .node-type-label {
-  color: #374151;
-  /* Darker for better contrast */
+  color: #d1d5db;
+  /* text-gray-300 */
 }
 
 .custom-node-body {
   padding: 15px;
-  /* Increased padding */
 }
 
 .custom-node .node-name {
   font-size: 1.05em;
-  /* Slightly larger name */
   font-weight: 500;
-  color: #111827;
-  /* Darkest text for name */
+  color: #f9fafb;
+  /* text-gray-50 */
   margin: 0;
   word-wrap: break-word;
   line-height: 1.3;
 }
 
-/* Specific styles for Activity nodes */
+/* Specific styles for Activity nodes in dark mode */
 .custom-node.activity-node {
-  border-color: #d97706;
-  /* Darker amber for border */
+  border-color: #92400e;
+  /* amber-700 */
 }
 
 .custom-node.activity-node .custom-node-header {
-  background-color: #fef3c7;
-  /* Lighter amber */
-  color: #92400e;
-  /* Dark amber text */
+  background-color: #4a2c0d;
+  color: #fcd34d;
+  /* amber-300 */
 }
 
-/* Specific styles for Entity nodes */
+/* Specific styles for Entity nodes in dark mode */
 .custom-node.entity-node {
-  border-color: #2563eb;
-  /* Stronger blue for border */
+  border-color: #1d4ed8;
+  /* blue-600 */
 }
 
 .custom-node.entity-node .custom-node-header {
-  background-color: #dbeafe;
-  /* Lighter blue */
-  color: #1e40af;
-  /* Dark blue text */
+  background-color: #1e3a8a;
+  color: #93c5fd;
+  /* blue-300 */
 }
 
 .custom-handle {
   width: 10px !important;
   height: 10px !important;
-  background: #cbd5e1 !important;
-  /* Lighter handle */
-  border: 2px solid #fff !important;
-  /* White border for pop */
+  background: #6b7280 !important;
+  /* bg-gray-500 */
+  border: 2px solid #1f2937 !important;
+  /* border-gray-800 */
   border-radius: 50%;
-  box-shadow: 0 0 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.4);
 }
-
-/* Handles are not connectable by user, so connecting style might not be needed */
-/*
-.custom-handle.connecting {
-    background: #3b82f6 !important;
-}
-*/
-
 
 .properties-panel {
   margin-top: 10px;
   padding: 15px;
-  /* Increased padding */
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
+  background-color: #334155;
+  /* bg-slate-700 */
+  border: 1px solid #475569;
+  /* border-slate-600 */
   border-radius: 8px;
-  /* More rounding */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .properties-panel p {
   margin: 8px 0;
-  /* Increased spacing */
   font-size: 0.9em;
+  color: #cbd5e1;
+  /* text-slate-300 */
 }
 
 .properties-panel-placeholder {
   font-style: italic;
-  color: #6b7280;
+  color: #94a3b8;
+  /* text-slate-400 */
   font-size: 0.9em;
   padding: 10px 0;
 }
 
-/* React Flow attribution and controls styling (optional) */
+/* React Flow attribution and controls styling for dark mode */
 .react-flow__controls {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   border-radius: 6px;
+  background-color: #334155;
+  border: 1px solid #475569;
 }
 
 .react-flow__controls button {
-  background-color: #fff;
-  border-bottom: 1px solid #e5e7eb;
+  background-color: #334155;
+  /* bg-slate-700 */
+  border-bottom: 1px solid #475569;
+  /* border-slate-600 */
+  color: #f1f5f9;
 }
 
 .react-flow__controls button:hover {
-  background-color: #f9fafb;
+  background-color: #475569;
+  /* bg-slate-600 */
 }
 
 .react-flow__minimap {
   border-radius: 6px;
-  /* More rounding */
-  background-color: rgba(243, 244, 246, 0.95);
-  /* Slightly different bg */
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e5e7eb;
+  background-color: rgba(30, 41, 59, 0.95);
+  /* bg-slate-800 with opacity */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  border: 1px solid #475569;
+  /* border-slate-600 */
 }
 
 .react-flow__background {
-  background-color: #f0f2f5;
-  /* Slightly different background for the pattern */
+  background-color: #1e293b;
+  /* bg-slate-800 */
 }
 
 
-/* Autocomplete Styles */
-.autocomplete-container {
-  position: relative;
-  width: 100%;
-}
-
+/* Autocomplete Styles for dark mode */
 .autocomplete-container input[type="text"] {
-  /* Inherits from .sidebar input[type="text"] */
-  width: 100%;
-  box-sizing: border-box;
+  /* Inherits dark mode styles from .sidebar input */
 }
 
 .suggestions-list {
-  position: absolute;
-  top: calc(100% + 2px);
-  /* Position below the input field with a small gap */
-  left: 0;
-  right: 0;
-  border: 1px solid #d1d5db;
-  /* border-top: none; */
-  /* Keep top border for visual separation if input has rounded bottom */
-  background-color: white;
+
+  border: 1px solid #475569;
+  /* border-slate-600 */
+  background-color: #1e293b;
+  /* bg-slate-800 */
   list-style: none;
   margin: 0;
   padding: 0;
   max-height: 180px;
-  /* Increased max height */
   overflow-y: auto;
   z-index: 1000;
   border-radius: 6px;
-  /* Rounded corners for the whole dropdown */
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .suggestions-list li {
   padding: 10px 12px;
-  /* Adjusted padding */
   cursor: pointer;
   font-size: 0.9em;
-  border-bottom: 1px solid #f3f4f6;
-  /* Separator line */
+  border-bottom: 1px solid #334155;
+  /* border-slate-700 */
+  color: #d1d5db;
+  /* text-gray-300 */
 }
 
 .suggestions-list li:last-child {
@@ -393,13 +321,16 @@ body,
 }
 
 .suggestions-list li:hover {
-  background-color: #eff6ff;
-  /* Lighter blue hover */
-  color: #1d4ed8;
+  background-color: #334155;
+  /* bg-slate-700 */
+  color: #f8fafc;
+  /* text-slate-50 */
 }
 
 .suggestions-list li.suggestion-active {
-  background-color: #dbeafe;
-  color: #1e3a8a;
+  background-color: #475569;
+  /* bg-slate-600 */
+  color: #f8fafc;
+  /* text-slate-50 */
   font-weight: 500;
 }

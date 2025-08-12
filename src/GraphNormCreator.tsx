@@ -72,18 +72,18 @@ const PREDEFINED_EDGE_ID = 'edge-1';
 
 // --- CustomNode ---
 const CustomNode: React.FC<{ data: CustomNodeData, selected: boolean }> = ({ data, selected }) => {
-  const nodeClasses = `custom-node ${data.type.toLowerCase()}-node ${selected ? 'selected' : ''} p-0 rounded-lg shadow-md border-2 bg-white dark:bg-gray-700`;
-  const headerClasses = `custom-node-header px-3 py-2 border-b rounded-t-md flex items-center font-semibold text-xs uppercase tracking-wider
-        ${data.type === 'Activity' || data.type === initialGlobalProcessConfig.eventNodeLabel ? 'bg-amber-100 dark:bg-amber-800 border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-200' : 'bg-sky-100 dark:bg-sky-800 border-sky-300 dark:border-sky-600 text-sky-700 dark:text-sky-200'}`;
+  // Corrected Tailwind CSS classes for dark mode text
+  const nodeClasses = `custom-node ${data.type.toLowerCase()}-node ${selected ? 'selected' : ''} p-0 rounded-lg shadow-md border-2`;
+  const headerClasses = `custom-node-header px-3 py-2 border-b rounded-t-md flex items-center font-semibold text-xs uppercase tracking-wider`;
   const bodyClasses = "custom-node-body p-3";
-  const nameClasses = "node-name text-sm font-medium text-gray-800 dark:text-gray-100 break-words";
+  const nameClasses = "node-name text-sm font-medium break-words"; // CSS will handle color
   const displayName = data.name || `Unnamed ${data.type}`;
 
   return (
-    <div className={nodeClasses} style={{ borderColor: data.selected ? '#3b82f6' : (data.type === 'Activity' || data.type === initialGlobalProcessConfig.eventNodeLabel ? '#f59e0b' : '#0ea5e9') }}>
+    <div className={nodeClasses} style={{ borderColor: data.selected ? '#3b82f6' : (data.type === (initialGlobalProcessConfig.eventNodeLabel || 'Activity') ? '#f59e0b' : '#0ea5e9') }}>
       <Handle type="target" position={Position.Left} className="!bg-gray-400 dark:!bg-gray-600 !w-3 !h-3 !border-2 !border-white dark:!border-gray-700" isConnectable={false} />
       <div className={headerClasses}>
-        <span className="node-icon mr-2 text-base">{data.icon || (data.type === 'Activity' || data.type === initialGlobalProcessConfig.eventNodeLabel ? '⚙️' : '🧱')}</span>
+        <span className="node-icon mr-2 text-base">{data.icon || (data.type === (initialGlobalProcessConfig.eventNodeLabel || 'Activity') ? '⚙️' : '🧱')}</span>
         <span className="node-type-label">{data.type}</span>
       </div>
       <div className={bodyClasses}>
@@ -230,6 +230,8 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
   const [analysisResults, setAnalysisResults] = useState<string>('');
   const [isAnalysisRunning, setIsAnalysisRunning] = useState<boolean>(false);
   const { autocompleteData } = useGlobalConfig();
+  console.log(autocompleteData);
+
 
   const [outputPanelWidth, setOutputPanelWidth] = useState(420);
   const resizing = useRef(false);
@@ -656,11 +658,11 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
   const isPropertyNorm = selectedNormType === NORM_TYPES.EVENT_PROPERTY_VALUE || selectedNormType === NORM_TYPES.ENTITY_PROPERTY_VALUE;
 
   return (
-    <div className="graph-norm-creator-container flex flex-row h-screen w-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white">
-      <div className="sidebar w-[380px] min-w-[350px] p-5 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-y-auto shadow-lg">
+    <div className="graph-norm-creator-container flex flex-row h-screen w-screen bg-slate-900 text-slate-300">
+      <div className="sidebar w-[380px] min-w-[350px] p-5 border-r border-slate-700 bg-slate-800/50 overflow-y-auto shadow-lg">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold">Norm Configuration</h2>
-          (
+          <h2 className="text-xl font-semibold text-white">Norm Configuration</h2>
+
           <div className="flex space-x-2">
             <Link to="/" className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded text-xs">
               Back to Dashboard
@@ -669,13 +671,13 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
               Edit Tech Config
             </Link>
           </div>
-          )
+
         </div>
         <div className="mb-4">
-          <Label htmlFor="normTypeSelect">Norm Type:</Label>
+          <Label htmlFor="normTypeSelect" className="text-slate-300">Norm Type:</Label>
           <select id="normTypeSelect" value={selectedNormType}
             onChange={(e) => setSelectedNormType(e.target.value as NormTypeValue)}
-            className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            className="mt-1 block w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white"
           >
             <option value={NORM_TYPES.AVERAGE_TIME_BETWEEN_ACTIVITIES}>Avg Time Between {globalProcessConfig.eventNodeLabel}s</option>
             <option value={NORM_TYPES.ENTITY_FOLLOWS_ENTITY}>{globalProcessConfig.entityNodeLabel} Follows {globalProcessConfig.entityNodeLabel}</option>
@@ -850,22 +852,22 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
         <Button onClick={addNormToList} className="w-full">Add Current Configuration as Norm</Button>
       </div>
 
-      <div className="canvas-container flex-grow relative h-full border-l border-r border-gray-200 dark:border-gray-700">
+      <div className="canvas-container flex-grow relative h-full border-l border-r border-slate-700">
         <ReactFlow
           nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
           onInit={setReactFlowInstance} onSelectionChange={onSelectionChange}
           nodeTypes={memoizedNodeTypes} fitView
-          className="bg-gray-50 dark:bg-gray-850"
+          className="bg-slate-900"
           nodesDraggable={true} nodesConnectable={false} elementsSelectable={true}
           deleteKeyCode={null} panOnDrag={true} zoomOnScroll={true} zoomOnDoubleClick={true} zoomOnPinch={true}
         >
-          <MiniMap nodeStrokeWidth={3} className="!bg-white dark:!bg-gray-700 !border-gray-300 dark:!border-gray-600" />
-          <Controls className="!shadow-lg !rounded-md !border-gray-300 dark:!border-gray-600" />
-          <Background gap={20} size={1} color="#cbd5e1" variant={BackgroundVariant.Dots} />
+          <MiniMap nodeStrokeWidth={3} className="!bg-slate-800 !border-slate-700" />
+          <Controls className="!shadow-lg !rounded-md !border-slate-600" />
+          <Background gap={20} size={1} color="#475569" variant={BackgroundVariant.Dots} />
         </ReactFlow>
       </div>
       <div
-        className="resizer cursor-col-resize w-2 bg-gray-300 dark:bg-gray-700 hover:bg-blue-500 dark:hover:bg-blue-700 transition-colors duration-150"
+        className="resizer cursor-col-resize w-2 bg-slate-700 hover:bg-blue-500 transition-colors duration-150"
         style={{ zIndex: 20 }}
         onMouseDown={handleResizerMouseDown}
       />
@@ -874,9 +876,9 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
         className="output-panel"
         style={{ width: `${outputPanelWidth}px`, minWidth: `${MIN_PANEL_WIDTH}px`, maxWidth: `${MAX_PANEL_WIDTH}px` }}
       >
-        <div className="w-full h-full p-5 bg-white dark:bg-gray-800 overflow-y-auto shadow-lg flex flex-col">
+        <div className="w-full h-full p-5 bg-slate-800/50 overflow-y-auto shadow-lg flex flex-col">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Created Norms ({createdNorms.length})</h2>
+            <h2 className="text-xl font-semibold text-white">Created Norms ({createdNorms.length})</h2>
             <div className="flex space-x-2">
               <Button onClick={() => handleRunAnalysis('ad-hoc')} disabled={isAnalysisRunning || createdNorms.length === 0} variant="default">
                 {isAnalysisRunning ? 'Running...' : 'Run Analysis'}
@@ -888,15 +890,15 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
           </div>
           <div className="flex-grow overflow-y-auto">
             <NormsTable norms={createdNorms} onDelete={onDeleteNorm} onToggle={onToggleNorm} />
-            <h2 className="text-xl font-semibold mt-6 mb-3">Generated JSON Output</h2>
+            <h2 className="text-xl font-semibold mt-6 mb-3 text-white">Generated JSON Output</h2>
             <textarea
               readOnly
               value={JSON.stringify({ config: globalProcessConfig, norms: createdNorms.filter(n => n.enabled) }, null, 2)}
               rows={10}
-              className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-xs font-mono"
+              className="w-full p-2 border border-slate-600 rounded-md bg-slate-700 text-xs font-mono text-slate-300"
             />
-            <h2 className="text-xl font-semibold mt-6 mb-3">Analysis Results</h2>
-            <pre className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-900 text-xs font-mono whitespace-pre-wrap overflow-x-auto h-64">
+            <h2 className="text-xl font-semibold mt-6 mb-3 text-white">Analysis Results</h2>
+            <pre className="w-full p-3 border border-slate-600 rounded-md bg-slate-900 text-xs font-mono whitespace-pre-wrap overflow-x-auto h-64 text-slate-300">
               {analysisResults || "Click 'Run Analysis' to see the results."}
             </pre>
           </div>
