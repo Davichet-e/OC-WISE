@@ -102,7 +102,7 @@ def execute_query(driver: Optional[Driver], query: str, parameters: Optional[Dic
         return None
 
     print("\n--- Executing Query ---")
-    print(query) # Uncomment for debug
+    # print(query) # Uncomment for debug
     # print(f"Parameters: {parameters}") # Uncomment for debug
     results_list = []
     try:
@@ -159,41 +159,77 @@ def create_df_entity_relationship(driver: Optional[Driver], config: Dict[str, An
 
 # --- Reporting ---
 
-def format_aggregation_results(norm_id: str, description: str, results: Optional[List[Dict]]) -> str:
-    report_lines = [
-        f"\n--- Aggregation Report for Norm: {norm_id} ---",
-        f"Description: {description}",
-        f"Timestamp: {datetime.datetime.now().isoformat()}",
-        "-" * 40
-    ]
+def summarize_aggregation_results(norm_id: str, description: str, results: Optional[List[Dict]]) -> Optional[Dict[str, Any]]:
+    """
+    Summarizes aggregation results into a structured dictionary (JSON).
+    """
     if results is None:
-        report_lines.append("Execution failed or skipped.")
-    elif not results:
-        report_lines.append("No aggregation results found.")
-    else:
-        try:
-            df = pd.DataFrame(results)
-            # Try to find compliant/total columns
-            compliant_col = next((col for col in df.columns if "compliant" in col), None)
-            total_col = next((col for col in df.columns if "total" in col), None)
-            if compliant_col and total_col:
-                df["% compliant"] = (df[compliant_col] / df[total_col] * 100).round(2)
-                df["Compliance"] = df["% compliant"].apply(lambda x: "✅" if x == 100 else ("⚠️" if x > 0 else "❌"))
-                # Sort by compliance descending
-                df = df.sort_values(by="% compliant", ascending=False)
-            report_lines.append(df.to_string(index=False))
-        except Exception as e:
-            report_lines.append(f"Error formatting results with pandas: {e}")
-            report_lines.append(f"Raw results: {results}")
+        return None
 
-    report_lines.append("\n" + "-" * 40)
-    # Suggest improvement: If compliance is low, suggest checking data or norm definition
-    if results and compliant_col and total_col:
-        overall_compliance = df[compliant_col].sum() / df[total_col].sum() * 100
-        if overall_compliance < 80:
-            report_lines.append(
-                f"⚠️  Overall compliance is below 80% ({overall_compliance:.2f}%). Consider reviewing the process or norm definition.")
-    return "\n".join(report_lines)
+    # --- Overall Summary Calculation ---
+    total_count = sum(r.get('total_count', 0) for r in results)
+    compliant_count = sum(r.get('compliant_count', 0) for r in results)
+    
+    if total_count > 0:
+        overall_compliance_percentage = round((compliant_count / total_count) * 100, 2)
+    else:
+        overall_compliance_percentage = 100.0
+
+    status = "OK"
+    if overall_compliance_percentage < 100: status = "Warning"
+    if overall_compliance_percentage < 80: status = "Critical"
+
+    # --- Per-Group Result Processing ---
+    processed_results = []
+    for row in results:
+        row_total = row.get('total_count', 0)
+        row_compliant = row.get('compliant_count', 0)
+        
+        if row_total > 0:
+            compliance_percentage = round((row_compliant / row_total) * 100, 2)
+        else:
+            compliance_percentage = 100.0
+        
+        # Separate grouping key from metrics
+        metrics = {k: v for k, v in row.items() if k != 'grouping_key'}
+
+        processed_results.append({
+            "grouping_key": row.get('grouping_key', 'Overall'),
+            "metrics": metrics,
+            "compliance_percentage": compliance_percentage
+        })
+
+    # --- Narrative Generation ---
+    narrative = f"Overall compliance is {overall_compliance_percentage}%. "
+    if total_count == 0:
+        narrative = "No instances were found to check for this norm."
+    elif compliant_count == total_count:
+        narrative += "All instances are compliant."
+    else:
+        violations = total_count - compliant_count
+        narrative += f"{violations} violation(s) found out of {total_count} instances. "
+        
+        # Find the worst performer if there are grouped results
+        if len(processed_results) > 1:
+            worst_performer = min(processed_results, key=lambda x: x['compliance_percentage'])
+            worst_group = worst_performer['grouping_key']
+            worst_perc = worst_performer['compliance_percentage']
+            narrative += f"The group '{worst_group}' has the lowest compliance at {worst_perc}%."
+
+    return {
+        "norm_id": norm_id,
+        "description": description,
+        "run_timestamp": datetime.datetime.now().isoformat(),
+        "summary": {
+            "overall_compliance_percentage": overall_compliance_percentage,
+            "total_instances": total_count,
+            "compliant_instances": compliant_count,
+            "violations": total_count - compliant_count,
+            "status": status,
+            "narrative": narrative,
+        },
+        "results": processed_results
+    }
 
 
 # --- Process Norm Classes ---
@@ -342,11 +378,17 @@ class ProcessNorm(ABC):
         """
         return query
 
-    def run_analysis(self, driver: Optional[Driver], config: Dict[str, Any], params: Dict[str, Any]) -> Optional[str]:
+    def run_analysis(self, driver: Optional[Driver], config: Dict[str, Any], params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not driver:
             no_driver_msg = f"Analysis skipped for Norm: {self.norm_id} - No database driver."
             print(no_driver_msg)
-            return no_driver_msg
+            # To maintain type consistency, we can return a dict here as well
+            return {
+                "norm_id": self.norm_id,
+                "description": self.description,
+                "status": "skipped",
+                "narrative": no_driver_msg
+            }
 
         print(f"\n=== Running Analysis for Norm: {self.norm_id} ===")
         print(f"Description: {self.description}")
@@ -368,7 +410,7 @@ class ProcessNorm(ABC):
                 persist_aggregation_results(driver, config, self.norm_id, run_id, agg_results, params.get("aggregation_properties", []))
             print(agg_results)
             print(self.norm_id)
-            report = format_aggregation_results(self.norm_id, self.description, agg_results)
+            report = summarize_aggregation_results(self.norm_id, self.description, agg_results)
         else:
             print("Aggregation query generation skipped or failed.")
 
@@ -418,8 +460,8 @@ class AverageTimeBetweenActivitiesNorm(ProcessNorm):
             "avg(diag.duration_seconds) as avg_duration",
             "min(diag.duration_seconds) as min_duration",
             "max(diag.duration_seconds) as max_duration",
-            "count(diag) as total_instances",
-            "SUM(CASE WHEN diag.complies THEN 1 ELSE 0 END) as compliant_instances"
+            "count(diag) as total_count",
+            "SUM(CASE WHEN diag.complies THEN 1 ELSE 0 END) as compliant_count"
         ]
         query = self._generate_aggregation_query_template(config, match_clause, grouping_properties, "start_node",
                                                           expressions)
@@ -456,8 +498,8 @@ class EntityFollowsEntityNorm(ProcessNorm):
         match_clause = f"MATCH (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id }})<-[:{config['compliance_rel_name']}]-(entity)"
         grouping_properties = params.get("aggregation_properties", [])
         expressions = [
-            "count(diag) as total_entities",
-            "SUM(CASE WHEN diag.complies THEN 1 ELSE 0 END) as compliant_entities"
+            "count(diag) as total_count",
+            "SUM(CASE WHEN diag.complies THEN 1 ELSE 0 END) as compliant_count"
         ]
         query = self._generate_aggregation_query_template(config, match_clause, grouping_properties, "entity",
                                                           expressions)
@@ -504,8 +546,8 @@ class EventToEntityRelationshipNorm(ProcessNorm):
             "avg(diag.actual_count) as avg_count",
             "min(diag.actual_count) as min_count",
             "max(diag.actual_count) as max_count",
-            "count(diag) as total_entities",
-            "SUM(CASE WHEN diag.complies THEN 1 ELSE 0 END) as compliant_entities"
+            "count(diag) as total_count",
+            "SUM(CASE WHEN diag.complies THEN 1 ELSE 0 END) as compliant_count"
         ]
         query = self._generate_aggregation_query_template(config, match_clause, grouping_properties, "ctx", expressions)
         return query, {"norm_id": self.norm_id}
@@ -541,8 +583,8 @@ class ActivityDirectlyFollowsNorm(ProcessNorm):
         match_clause = f"MATCH (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id }})<-[:{config['compliance_rel_name']}]-(event)"
         grouping_properties = params.get("aggregation_properties", [])
         expressions = [
-            "count(diag) as total_instances",
-            "SUM(CASE WHEN diag.complies THEN 1 ELSE 0 END) as compliant_instances"
+            "count(diag) as total_count",
+            "SUM(CASE WHEN diag.complies THEN 1 ELSE 0 END) as compliant_count"
         ]
         query = self._generate_aggregation_query_template(config, match_clause, grouping_properties, "event",
                                                           expressions)
@@ -624,8 +666,8 @@ class PropertyValueNorm(ProcessNorm):
         match_clause = f"MATCH (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id }})<-[:{config['compliance_rel_name']}]-(n)"
         grouping_properties = params.get("aggregation_properties", [])
         expressions = [
-            "count(diag) as total_nodes",
-            "SUM(CASE WHEN diag.complies THEN 1 ELSE 0 END) as compliant_nodes"
+            "count(diag) as total_count",
+            "SUM(CASE WHEN diag.complies THEN 1 ELSE 0 END) as compliant_count"
         ]
         query = self._generate_aggregation_query_template(config, match_clause, grouping_properties, "n", expressions)
         return query, {"norm_id": self.norm_id}
@@ -653,7 +695,7 @@ NORM_CLASS_MAP = {
 }
 
 
-def parse_and_run_norms(driver: Optional[Driver], config: Dict[str, Any], data: Dict[str, Any], run_id: str) -> List[str]:
+def parse_and_run_norms(driver: Optional[Driver], config: Dict[str, Any], data: Dict[str, Any], run_id: str) -> List[Dict[str, Any]]:
     reports = []
     json_config = data.get("config", {})
     config.update(json_config)
@@ -757,9 +799,10 @@ def persist_aggregation_results(driver: Driver, config: Dict, norm_id: str, run_
     print(f"Persisted {len(results)} aggregation results for norm {norm_id} in run {run_id}.")
 
 
-def run_analysis_from_request(request_data: NormRequest) -> str:
+def run_analysis_from_request(request_data: NormRequest) -> Dict[str, Any]:
     driver = get_neo4j_driver()
-    if not driver: return "Error: Could not connect to Neo4j database."
+    if not driver:
+        return {"error": "Could not connect to Neo4j database."}
 
     run_id = str(uuid.uuid4())
     run_label = CONFIG['analysis_run_node_label']
@@ -785,10 +828,10 @@ def run_analysis_from_request(request_data: NormRequest) -> str:
     old_stdout = sys.stdout
     sys.stdout = captured_output = io.StringIO()
     reports = []
+    status = 'completed'
     try:
         base_config = CONFIG.copy()
         reports = parse_and_run_norms(driver, base_config, request_data.model_dump(), run_id)
-        status = 'completed'
     except Exception:
         status = 'failed'
         traceback.print_exc(file=sys.stdout)
@@ -800,7 +843,12 @@ def run_analysis_from_request(request_data: NormRequest) -> str:
         driver.close()
         print("Neo4j connection closed.")
 
-    return f"Analysis run {run_id} ({status}) completed.\n\n" + log_output + "\n".join(reports)
+    return {
+        "run_id": run_id,
+        "status": status,
+        "logs": log_output,
+        "reports": reports
+    }
 
 
 def persist_norms(driver: Driver, norms: List[Dict[str, Any]], run_id: str):
@@ -920,7 +968,7 @@ def get_process_definition(driver: Driver, definition_id: str) -> Optional[Dict]
     return {**pd_data, "norms": norms_data}
 
 
-def run_definition(driver: Driver, definition_id: str, run_type: str) -> str:
+def run_definition(driver: Driver, definition_id: str, run_type: str) -> Dict[str, Any]:
     definition = get_process_definition(driver, definition_id)
     if not definition:
         raise HTTPException(status_code=404, detail="Process Definition not found.")

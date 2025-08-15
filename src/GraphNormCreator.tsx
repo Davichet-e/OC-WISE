@@ -25,6 +25,7 @@ import NormsTable from "./NormsTable";
 import { CreatedNorm } from './App';
 import { Link } from 'react-router-dom';
 import PropertyFilter, { Filter } from './PropertyFilter';
+import AnalysisResultDisplay, { AnalysisResponse } from './AnalysisResultDisplay';
 
 // --- Constants and Type Definitions ---
 const NORM_TYPES = {
@@ -227,7 +228,7 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
   const [currentGlobalNormDetails, setCurrentGlobalNormDetails] = useState<GlobalNormDetails>(initialGlobalNormDetails);
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
   const [thresholdCondition, setThresholdCondition] = useState<'less than' | 'greater than'>('less than');
-  const [analysisResults, setAnalysisResults] = useState<string>('');
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResponse | null>(null);
   const [isAnalysisRunning, setIsAnalysisRunning] = useState<boolean>(false);
   const { autocompleteData } = useGlobalConfig();
   console.log(autocompleteData);
@@ -582,12 +583,12 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
   };
 
   const handleRunAnalysis = async (runType: 'ad-hoc' | 'scheduled' = 'ad-hoc') => {
-    if (createdNorms.length === 0) {
-      alert("Please add at least one norm before running the analysis.");
+    if (createdNorms.filter(n => n.enabled).length === 0) {
+      alert("Please add and enable at least one norm before running the analysis.");
       return;
     }
     setIsAnalysisRunning(true);
-    setAnalysisResults('Running analysis...');
+    setAnalysisResults(null); // Clear previous results
 
     const payload = {
       config: globalProcessConfig,
@@ -605,20 +606,23 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
         body: JSON.stringify(payload),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        throw new Error(data.detail || `HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
       setAnalysisResults(data.results);
     } catch (error: unknown) {
       console.error("Failed to run analysis:", error);
-      if (error instanceof Error) {
-        setAnalysisResults(`Error: ${error.message}`);
-      } else {
-        setAnalysisResults('An unknown error occurred.');
-      }
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+      setAnalysisResults({
+        run_id: 'error',
+        status: 'failed',
+        logs: `Frontend Error: ${errorMessage}`,
+        reports: [],
+        error: errorMessage
+      });
     } finally {
       setIsAnalysisRunning(false);
     }
@@ -818,9 +822,9 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
           <h3 className="text-lg font-semibold mb-2">Filters</h3>
           {currentGlobalNormDetails.filters.slice(isPropertyNorm ? 1 : 0).map((filter, index) => (
             <PropertyFilter
-              key={index}
+              key={isPropertyNorm ? index + 1 : index}
               filter={filter}
-              index={index}
+              index={isPropertyNorm ? index + 1 : index}
               onChange={handleFilterChange}
               onRemove={removeFilter}
               isRemovable={true}
@@ -899,9 +903,12 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
               className="w-full p-2 border border-slate-600 rounded-md bg-slate-700 text-xs font-mono text-slate-300"
             />
             <h2 className="text-xl font-semibold mt-6 mb-3 text-white">Analysis Results</h2>
-            <pre className="w-full p-3 border border-slate-600 rounded-md bg-slate-900 text-xs font-mono whitespace-pre-wrap overflow-x-auto h-64 text-slate-300">
-              {analysisResults || "Click 'Run Analysis' to see the results."}
-            </pre>
+            <div className="w-full p-3 border border-slate-600 rounded-md bg-slate-900 text-xs font-mono whitespace-pre-wrap overflow-x-auto min-h-[16rem] text-slate-300">
+              {isAnalysisRunning
+                ? <div className="flex items-center justify-center h-full"><div className="loader"></div> Running...</div>
+                : <AnalysisResultDisplay results={analysisResults} />
+              }
+            </div>
           </div>
         </div>
       </div>
