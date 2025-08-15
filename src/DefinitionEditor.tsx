@@ -86,7 +86,7 @@ const DefinitionEditor: React.FC<DefinitionEditorProps> = ({ initialData, onSave
                 />
                 <button
                     onClick={() => setIsNormCreatorVisible(false)}
-                    className="absolute top-5 right-5 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg z-50"
+                    className="absolute bottom-5 right-5 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg z-50"
                 >
                     Back to Definition
                 </button>

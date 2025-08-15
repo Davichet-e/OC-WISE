@@ -102,7 +102,7 @@ def execute_query(driver: Optional[Driver], query: str, parameters: Optional[Dic
         return None
 
     print("\n--- Executing Query ---")
-    # print(query) # Uncomment for debug
+    print(query) # Uncomment for debug
     # print(f"Parameters: {parameters}") # Uncomment for debug
     results_list = []
     try:
@@ -366,6 +366,8 @@ class ProcessNorm(ABC):
             agg_results = execute_query(driver, agg_query, agg_params)
             if agg_results and run_id:
                 persist_aggregation_results(driver, config, self.norm_id, run_id, agg_results, params.get("aggregation_properties", []))
+            print(agg_results)
+            print(self.norm_id)
             report = format_aggregation_results(self.norm_id, self.description, agg_results)
         else:
             print("Aggregation query generation skipped or failed.")
@@ -435,10 +437,14 @@ class EntityFollowsEntityNorm(ProcessNorm):
 
         query = f"""
         MATCH (ea:{config['entity_node_label']} {{ `{config['entity_filter_property']}`: $entity_type_a }})
+        {where_clause}
         OPTIONAL MATCH (ea)-[:`{config['df_entity_rel_name']}`]->(eb:{config['entity_node_label']} {{ `{config['entity_filter_property']}`: $entity_type_b }})
         WITH ea, (eb IS NOT NULL) as complies
         MERGE (diag:{config['diagnostic_node_label']} {{ norm_id: $norm_id, related_id: elementId(ea) }})
         SET diag.complies = complies
+
+        MERGE (ea)-[:{config['compliance_rel_name']}]->(diag)
+
         WITH diag
         MATCH (run:{config['analysis_run_node_label']} {{ run_id: $run_id }})
         MERGE (diag)-[:`{config['generated_in_rel_name']}`]->(run)

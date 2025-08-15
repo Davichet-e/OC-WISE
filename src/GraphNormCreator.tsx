@@ -564,6 +564,7 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
           property_name: mainFilter.property_name,
           operator: mainFilter.property_operator,
           value: getFilterValue(mainFilter),
+          attributeStorage: mainFilter.attributeStorage,
           aggregation_properties: parseAggregationProps(currentGlobalNormDetails.aggregation_properties),
         });
 
@@ -590,7 +591,7 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
 
     const payload = {
       config: globalProcessConfig,
-      norms: createdNorms,
+      norms: createdNorms.filter(n => n.enabled),
       run_type: runType,
       schedule: runType === 'scheduled' ? 'weekly' : undefined,
     };
@@ -883,9 +884,9 @@ const GraphNormCreatorInternal: React.FC<GraphNormCreatorInternalProps> = ({
               <Button onClick={() => handleRunAnalysis('ad-hoc')} disabled={isAnalysisRunning || createdNorms.length === 0} variant="default">
                 {isAnalysisRunning ? 'Running...' : 'Run Analysis'}
               </Button>
-              <Button onClick={() => handleRunAnalysis('scheduled')} disabled={isAnalysisRunning || createdNorms.length === 0} variant="outline">
+              {/* <Button onClick={() => handleRunAnalysis('scheduled')} disabled={isAnalysisRunning || createdNorms.length === 0} variant="outline">
                 Run Weekly Scheduled Analysis
-              </Button>
+              </Button> */}
             </div>
           </div>
           <div className="flex-grow overflow-y-auto">
